@@ -22,6 +22,7 @@ def setup_module():
     print("| Test Suite : Input layer |")
     print("============================")
 
+
 # test accuracy
 accuracy = 1e-4
 

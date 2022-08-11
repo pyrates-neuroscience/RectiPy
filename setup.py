@@ -19,7 +19,7 @@ CLASSIFIERS = ["Programming Language :: Python :: 3",
                "Topic :: Scientific/Engineering",
                ]
 
-EXTRAS = {"test": ["pytest", "bump2version"]}
+EXTRAS = {"tests": ["pytest", "bump2version"]}
 
 with open("VERSION", "r", encoding="utf8") as fh:
     VERSION = fh.read().strip()

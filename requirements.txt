@@ -1,4 +1,5 @@
 torch
-matplotlib
+pyrates
 numpy
+matplotlib
 scipy

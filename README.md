@@ -1,6 +1,6 @@
 # RectiPy
 
-[![License](https://img.shields.io/github/license/pyrates-neuroscience/RectiPy.svg)](https://github.com/pyrates-neuroscience/RectiPy) 
+[![License](https://img.shields.io/github/license/pyrates-neuroscience/RectiPy.svg)](https://github.com/pyrates-neuroscience/RectiPy)
 [![Python](https://img.shields.io/pypi/pyversions/rectipy.svg?style=plastic)](https://badge.fury.io/py/rectipy)
 [![PyPI version](https://badge.fury.io/py/rectipy.svg)](https://badge.fury.io/py/rectipy)
 

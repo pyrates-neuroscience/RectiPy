@@ -6,8 +6,24 @@ from .utility import retrieve_from_dict
 
 
 class Observer:
+    """Class that is used to record state variables, outputs, and losses during calls of `Network.train`,
+    `Network.test`, or `Network.run`.
+    """
 
     def __init__(self, dt: float, record_output: bool = True, record_loss: bool = True, record_vars: list = None):
+        """Instantiates observer.
+
+        Parameters
+        ----------
+        dt
+            Step-size of training/testing/integration steps.
+        record_output
+            If true, the output of the `Network` instance is recorded.
+        record_loss
+            If true, the loss calculated during training/testing by the `Network` is recorded.
+        record_vars
+            Additional variables of the RNN layer that should be recorded.
+        """
 
         if not record_vars:
             record_vars = []
@@ -23,18 +39,27 @@ class Observer:
             self._recordings['out'] = []
 
     @property
-    def recorded_state_variables(self):
+    def recorded_rnn_variables(self) -> list:
+        """RNN state variables that are recorded by this `Observer` instance.
+        """
         return self._state_vars
 
-    @property
-    def record_loss(self):
-        return self._record_loss
+    def record(self, output: torch.Tensor, loss: float, record_vars: Iterable[torch.Tensor]) -> None:
+        """Performs a single recording steps.
 
-    @property
-    def record_output(self):
-        return self._record_out
+        Parameters
+        ----------
+        output
+            Output of the `Network` model.
+        loss
+            Current loss of the `Network` model.
+        record_vars
+            Additional variables of the RNN layer that should be recorded.
 
-    def record(self, output: torch.Tensor, loss: float, record_vars: Iterable[torch.Tensor]):
+        Returns
+        -------
+        None
+        """
         recs = self._recordings
         for key, val, reduce in zip(self._state_vars, record_vars, self._reduce_vars):
             v = val.detach().numpy()
@@ -44,7 +69,25 @@ class Observer:
         if self._record_loss:
             recs['loss'].append(loss)
 
-    def plot(self, y: str, x: str = None, ax: plt.Axes = None, **kwargs):
+    def plot(self, y: str, x: str = None, ax: plt.Axes = None, **kwargs) -> plt.Axes:
+        """Create a line plot with variable `y` on the y-axis and `x` on the x-axis.
+
+        Parameters
+        ----------
+        y
+            Name of the variable to be plotted on the y-axis.
+        x
+            Name of the variable to be plotted on the x-axis. If not provided, `y` will be plotted against time steps.
+        ax
+            `matplotlib.pyplot.Axes` instance in which to plot.
+        kwargs
+            Additional keyword arguments for the `matplotlib.pyplot.plot` call.
+
+        Returns
+        -------
+        plt.Axes
+            Instance of `matplotlib.pyplot.Axes` that contains the line plot.
+        """
 
         if ax is None:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)

@@ -6,8 +6,8 @@ from .input_layer import LinearStatic
 
 class OutputLayer(Module):
 
-    def __init__(self, n: int, m: int, weights: torch.Tensor = None, trainable: bool = False, transform: str = None,
-                 dtype: torch.dtype = torch.float64):
+    def __init__(self, n: int, m: int, weights: torch.Tensor = None, trainable: bool = False,
+                 activation_function: str = None, dtype: torch.dtype = torch.float64):
 
         super().__init__()
 
@@ -22,19 +22,19 @@ class OutputLayer(Module):
             layer = LinearStatic(weights)
 
         # define output function
-        if transform is None:
-            transform = Identity()
-        elif transform == 'tanh':
-            transform = Tanh()
-        elif transform == 'softmax':
-            transform = Softmax()
-        elif transform == 'softmin':
-            transform = Softmin()
-        elif transform == 'sigmoid':
-            transform = Sigmoid()
+        if activation_function is None:
+            activation_function = Identity()
+        elif activation_function == 'tanh':
+            activation_function = Tanh()
+        elif activation_function == 'softmax':
+            activation_function = Softmax()
+        elif activation_function == 'softmin':
+            activation_function = Softmin()
+        elif activation_function == 'sigmoid':
+            activation_function = Sigmoid()
 
         # define output layer
-        self.layer = Sequential(layer, transform)
+        self.layer = Sequential(layer, activation_function)
 
     def forward(self, x):
         return self.layer(x)

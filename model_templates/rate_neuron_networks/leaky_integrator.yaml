@@ -1,0 +1,51 @@
+%YAML 1.2
+---
+
+# operator templates
+####################
+
+# leaky integrator operator
+li_op:
+  base: OperatorTemplate
+  equations: "u' = -u/tau + r_in + I_ext"
+  variables:
+    u: output(0.0)
+    tau: 1.0
+    r_in: input(0.0)
+    I_ext: input(0.0)
+
+# sigmoid transformation
+sigmoid_op:
+  base: OperatorTemplate
+  equations: "r = r_max / (1 + exp(s*(u0-u)))"
+  variables:
+    m: output(0.0)
+    r_max: 1.0
+    s: 1.0
+    u0: 0.0
+    u: input(0.0)
+
+# hyperbolic tangent transformation
+tanh_op:
+  base: OperatorTemplate
+  equations: "r = tanh(u)"
+  variables:
+    r: output(0.0)
+    u: input(0.0)
+
+# node templates
+################
+
+# node with a sigmoid transformation operator
+sigmoid_node:
+  base: NodeTemplate
+  operators:
+    - li_op
+    - sigmoid_op
+
+# node with a sigmoid transformation operator
+tanh_node:
+  base: NodeTemplate
+  operators:
+    - li_op
+    - tanh_op

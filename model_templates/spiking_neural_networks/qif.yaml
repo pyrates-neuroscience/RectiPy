@@ -1,0 +1,49 @@
+%YAML 1.2
+---
+
+# operator templates
+####################
+
+# operator for QIF neurons with exponentially decaying synaptic output
+qif_op:
+  base: OperatorTemplate
+  equations:
+    - "v' = (v^2 + eta + I_ext)/tau + s_in"
+    - "s' = -s/tau_s + spike"
+  variables:
+    s: output(0.0)
+    v: variable(-2.0)
+    tau: 1.0
+    tau_s: 0.5
+    eta: -5.0
+    I_ext: input(0.0)
+    spike: input(0.0)
+    s_in: input(0.0)
+
+# operator for qif neurons with spike-frequency adaptation
+qif_sfa_op:
+  base: qif_op
+  equations:
+    replace:
+      eta: eta - x
+    add:
+      - "x' = -x/tau_x + alpha*spike"
+  variables:
+    x: variable(0.0)
+    alpha: 0.5
+    tau_x: 10.0
+
+# node templates
+################
+
+# qif neuron
+qif_pop:
+  base: NodeTemplate
+  operators:
+    - qif_op
+
+# qif neuron with sfa
+qif_sfa_pop:
+  base: NodeTemplate
+  operators:
+    - qif_sfa_op

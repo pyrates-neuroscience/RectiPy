@@ -15,6 +15,9 @@ class InputLayer(Module):
                 weights = torch.randn(n, m, dtype=dtype)
             elif weights.dtype != dtype:
                 weights = torch.tensor(weights, dtype=dtype)
+            if weights.shape[0] != n or weights.shape[1] != m:
+                raise ValueError("Shape of the provided weights does not match the input and output dimensions of the"
+                                 "input layer.")
             self.layer = LinearStatic(weights)
 
     def forward(self, x):
@@ -28,6 +31,8 @@ class LinearStatic(Module):
 
     def __init__(self, weights: torch.Tensor):
         super().__init__()
+        if not isinstance(weights, torch.Tensor):
+            raise TypeError("Weights provided to the input layer have to be of type `torch.Tensor`.")
         weights.detach()
         self.weights = weights
 

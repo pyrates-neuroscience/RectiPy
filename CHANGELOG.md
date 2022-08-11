@@ -2,6 +2,13 @@
 
 ## 0.1
 
+### 0.1.3
+
+- added pytests for the input layer
+- added a CircleCI config
+- added automated execution of all tests via CircleCI upon pushing to github
+- added `pytest` to the requirements
+
 ### 0.1.2
 
 - added docstrings to the Network class for all non-private methods

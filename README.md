@@ -3,6 +3,7 @@
 [![License](https://img.shields.io/github/license/pyrates-neuroscience/RectiPy.svg)](https://github.com/pyrates-neuroscience/RectiPy)
 [![Python](https://img.shields.io/pypi/pyversions/rectipy.svg?style=plastic)](https://badge.fury.io/py/rectipy)
 [![PyPI version](https://badge.fury.io/py/rectipy.svg)](https://badge.fury.io/py/rectipy)
+[![CircleCI](https://circleci.com/gh/pyrates-neuroscience/RectiPy/tree/master.svg?style=svg)](https://circleci.com/gh/pyrates-neuroscience/RectiPy/tree/master)
 
 **Rec**urrent neural network **t**raining **i**n **Py**thon (`RectiPy`) is a software package developed by Richard Gast 
 that allows for lightweight implementations of recurrent neural networks (RNNs) based on ordinary or delayed 

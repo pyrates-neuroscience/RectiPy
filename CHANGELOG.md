@@ -2,6 +2,12 @@
 
 ## 0.1
 
+### 0.1.4
+
+- added pytests for the output layer
+- added checks on the correctness of the input arguments for the output layer
+- added keyword arguments to the `OutputLayer.__init__()` that are passed on to `torch.nn.Linear` if `trainable=True`
+
 ### 0.1.3
 
 - added pytests for the input layer

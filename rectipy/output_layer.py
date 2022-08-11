@@ -7,18 +7,21 @@ from .input_layer import LinearStatic
 class OutputLayer(Module):
 
     def __init__(self, n: int, m: int, weights: torch.Tensor = None, trainable: bool = False,
-                 activation_function: str = None, dtype: torch.dtype = torch.float64):
+                 activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs):
 
         super().__init__()
 
         # initialize output weights
         if trainable:
-            layer = Linear(n, m, dtype=dtype)
+            layer = Linear(n, m, dtype=dtype, **kwargs)
         else:
             if weights is None:
                 weights = torch.randn(m, n, dtype=dtype)
             elif weights.dtype != dtype:
                 weights = torch.tensor(weights, dtype=dtype)
+            if weights.shape[0] != m or weights.shape[1] != n:
+                raise ValueError("Shape of the provided weights does not match the input and output dimensions of the"
+                                 "output layer.")
             layer = LinearStatic(weights)
 
         # define output function
@@ -32,6 +35,9 @@ class OutputLayer(Module):
             activation_function = Softmin()
         elif activation_function == 'sigmoid':
             activation_function = Sigmoid()
+        else:
+            raise ValueError(f"Invalid keyword argument `activation_function`: {activation_function} is not a valid "
+                             f"option. See the docstring for `Network.add_output_layer` for valid options.")
 
         # define output layer
         self.layer = Sequential(layer, activation_function)

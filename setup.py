@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-PYRECU_TEAM = "Richard Gast"
+RECTIPY_TEAM = "Richard Gast"
 
 with open("requirements.txt", "r", encoding="utf8") as fh:
     REQUIREMENTS = fh.read()
@@ -19,6 +19,8 @@ CLASSIFIERS = ["Programming Language :: Python :: 3",
                "Topic :: Scientific/Engineering",
                ]
 
+EXTRAS = {"test": ["pytest", "bump2version"]}
+
 with open("VERSION", "r", encoding="utf8") as fh:
     VERSION = fh.read().strip()
 
@@ -30,13 +32,14 @@ setup(name='rectipy',
       description='Recurrent neural network training in Python',
       long_description=DESCRIPTION,
       long_description_content_type='text/markdown',
-      author=PYRECU_TEAM,
+      author=RECTIPY_TEAM,
       author_email='richard.gast@northwestern.edu',
       license='GPL v3',
       packages=find_packages(),
       zip_safe=False,
       python_requires='>=3.6',
       install_requires=INSTALL_REQUIREMENTS,
+      extras_require=EXTRAS,
       classifiers=CLASSIFIERS,
       include_package_data=True  # include additional non-python files specified in MANIFEST.in
       )

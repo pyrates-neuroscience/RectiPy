@@ -3,4 +3,3 @@ pyrates
 numpy
 matplotlib
 scipy
-pytest

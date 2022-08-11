@@ -34,11 +34,24 @@ Thus, `RectiPy` comes with all the gradient-based optimization and parallelizati
 
 ## Installation
 
-To install `RectiPy`, clone this repository and run the following line from the directory in which the repository was cloned:
+# Stable release (PyPi)
+
+You can install the most recent stable version of `RectiPy` via the `pip` command. 
+To this end, execute the following command via the terminal within the Python environment you would like to install `RectiPy` in:
+
+```
+pip install rectipy
+```
+This will also install the dependencies of the software listed below.
+
+# Development version (github)
+
+To install the most recent development version of `RectiPy` as available on the master branch, clone this repository and run the 
+following line from the directory in which the repository was cloned:
 ```
 python setup.py install
 ```
-This will also install the requirements of the software listed below.
+Again, this will also install the dependencies of the software listed below.
 
 ### Dependencies
 - torch

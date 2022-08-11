@@ -2,6 +2,12 @@
 
 ## 0.1
 
+### 0.1.1
+
+- added automated pypi releases
+- added github workflow for pypi releases
+- updated readme
+
 ### 0.1.0
 
 - code structure: 

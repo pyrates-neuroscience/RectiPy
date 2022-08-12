@@ -5,6 +5,7 @@
 ### 0.1.5
 
 - ensured that state variable indices in RNN layer use correct data type (`torch.int64`)
+
 ### 0.1.4
 
 - added pytests for the output layer

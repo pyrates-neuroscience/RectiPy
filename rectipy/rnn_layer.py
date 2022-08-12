@@ -85,7 +85,7 @@ class RNNLayer(Module):
             template.update_var(node_vars=kwargs.pop('node_vars', None))
 
         # generate rnn function
-        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', **kwargs)
+        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False, **kwargs)
 
         return func, args, keys, template, state_var_indices
 

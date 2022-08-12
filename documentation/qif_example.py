@@ -5,7 +5,7 @@ from matplotlib.pyplot import show
 # network parameters
 N = 1000
 p = 0.1
-W = random_connectivity(N, p, normalize=True)
+W = random_connectivity(N, N, p, normalize=True)
 eta = -5.0
 Delta = 0.3
 etas = eta + Delta*np.tan((np.pi/2)*(2.*np.arange(1, N+1)-N-1)/(N+1))

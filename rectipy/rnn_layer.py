@@ -13,7 +13,7 @@ class RNNLayer(Module):
         super().__init__()
         self.y = torch.tensor(rnn_args[1].detach().numpy(), dtype=dtype)
         self.dy = torch.tensor(rnn_args[2].detach().numpy(), dtype=dtype)
-        self.output = torch.tensor(output)
+        self.output = torch.tensor(output, dtype=torch.int64)
         self.dt = dt
         self.func = rnn_func
         self.args = rnn_args[3:]

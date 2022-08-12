@@ -19,7 +19,7 @@ m = 2
 inp = np.random.randn(steps, m)
 
 # initialize network
-net = Network.from_yaml("model_templates.spiking_neural_networks.qif.qif_sfa_pop", weights=W,
+net = Network.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_sfa_pop", weights=W,
                         source_var="s", target_var="s_in", input_var_ext="I_ext", output_var="s", spike_var="v",
                         input_var_net="spike", op="qif_sfa_op", node_vars={'all/qif_sfa_op/eta': etas}, dt=dt,
                         spike_threshold=v_theta, spike_reset=-v_theta, float_precision="float64", record_vars=['s'],

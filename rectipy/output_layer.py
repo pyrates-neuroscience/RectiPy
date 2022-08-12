@@ -30,9 +30,9 @@ class OutputLayer(Module):
         elif activation_function == 'tanh':
             activation_function = Tanh()
         elif activation_function == 'softmax':
-            activation_function = Softmax()
+            activation_function = Softmax(dim=0)
         elif activation_function == 'softmin':
-            activation_function = Softmin()
+            activation_function = Softmin(dim=0)
         elif activation_function == 'sigmoid':
             activation_function = Sigmoid()
         else:

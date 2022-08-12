@@ -51,3 +51,25 @@ def random_connectivity(n: int, m: int, p: float, normalize: bool = True) -> np.
         cols = np.random.permutation(positions)[:n_conns]
         C[row, cols] = 1.0/n_conns if normalize else 1.0
     return C
+
+
+def input_connections(n: int, m: int, p: float, variance: float = 1.0, zero_mean: bool = True):
+    C_tmp = random_connectivity(m, n, p, normalize=False).T
+    C = np.zeros_like(C_tmp)
+    for col in range(C_tmp.shape[1]):
+        rows = np.argwhere(C_tmp[:, col] > 0).squeeze()
+        C[rows, col] = np.random.randn(rows.shape[0])*variance
+        if zero_mean:
+            C[rows, col] -= np.sum(C[rows, col])
+    return C
+
+
+# score functions
+#################
+
+
+def wta_score(x: np.ndarray, y: np.ndarray):
+    z = np.zeros((x.shape[0]))
+    for idx in range(x.shape[0]):
+        z[idx] = 1.0 if np.argmax(x[idx, :]) == np.argmax(y[idx, :]) else 0.0
+    return np.mean(z)

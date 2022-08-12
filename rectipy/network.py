@@ -34,6 +34,13 @@ class Network:
         self._var_map = var_map if var_map else {}
         self._model = None
 
+    def __getitem__(self, item: int):
+        try:
+            return self._model[item]
+        except AttributeError:
+            self.compile()
+        return self._model[item]
+
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
                   input_var_ext: str, output_var: str, input_var_net: str = None, spike_var: str = None, op: str = None,
@@ -249,7 +256,7 @@ class Network:
         inp_tensor = torch.tensor(inputs)
         target_tensor = torch.tensor(targets)
         if inp_tensor.shape[0] != target_tensor.shape[0]:
-            raise ValueError('Wrong dimensions of input and target output. Please make shure that `inputs` and '
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension.')
 
         # set up model
@@ -275,27 +282,13 @@ class Network:
         # optimization
         ##############
 
-        steps = inp_tensor.shape[0]
         t0 = perf_counter()
-        for step in range(steps):
-
-            # forward pass
-            prediction = model(inp_tensor[step, :])
-
-            # loss calculation
-            error = loss(prediction, target_tensor[step, :])
-
-            # error backpropagation
-            optimizer.zero_grad()
-            error.backward(**error_kwargs)
-            optimizer.step(**step_kwargs)
-
-            # results storage
-            if step % sampling_steps == 0:
-                if verbose:
-                    print(f'Progress: {step}/{steps} training steps finished.')
-                obs.record(prediction, error.item(), self.rnn_layer.record(rec_vars))
-
+        if len(inp_tensor.shape) > 2:
+            self._train_epochs(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs,
+                               step_kwargs, sampling_steps=sampling_steps, verbose=verbose)
+        else:
+            self._train(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
+                        sampling_steps=sampling_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
@@ -338,9 +331,6 @@ class Network:
         # transform inputs into tensors
         inp_tensor = torch.tensor(inputs)
         target_tensor = torch.tensor(targets)
-        if inp_tensor.shape[0] != target_tensor.shape[0]:
-            raise ValueError('Wrong dimensions of input and target output. Please make shure that `inputs` and '
-                             '`targets` agree in the first dimension.')
 
         # set up model
         model = self.compile(device) if self._model is None else self._model
@@ -349,7 +339,7 @@ class Network:
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
 
         # initialize observer
-        obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], **kwargs)
+        obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
         obs = Observer(dt=self.rnn_layer.dt, **obs_kwargs)
         rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
 
@@ -422,7 +412,7 @@ class Network:
 
         return obs
 
-    def compile(self, device: Union[str, None]) -> Sequential:
+    def compile(self, device: str = None) -> Sequential:
         """Connects the `InputLayer`, `RNNLayer` and `OutputLayer` of this model via a `torch.nn.Sequential` instance.
         Input and output layers are optional.
 
@@ -444,6 +434,71 @@ class Network:
         if device is not None:
             model.to(device)
         return model
+
+    def _train(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
+               optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict,
+               sampling_steps: int = 100, verbose: bool = False):
+
+        if inp.shape[0] != target.shape[0]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension.')
+
+        steps = inp.shape[0]
+        for step in range(steps):
+
+            # forward pass
+            prediction = model(inp[step, :])
+
+            # loss calculation
+            error = loss(prediction, target[step, :])
+
+            # error backpropagation
+            optimizer.zero_grad()
+            error.backward(**error_kwargs)
+            optimizer.step(**step_kwargs)
+
+            # results storage
+            if step % sampling_steps == 0:
+                if verbose:
+                    print(f'Progress: {step}/{steps} training steps finished.')
+                obs.record(prediction, error.item(), self.rnn_layer.record(rec_vars))
+
+    def _train_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
+                      optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
+                      step_kwargs: dict, sampling_steps: int = 100, verbose: bool = False):
+
+        if inp.shape[0] != target.shape[0] or inp.shape[1] != target.shape[1]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
+        epochs = inp.shape[0]
+        steps = inp.shape[1]
+        for epoch in range(epochs):
+
+            # go through steps of the epoch
+            epoch_loss = 0
+            for step in range(steps):
+
+                # forward pass
+                prediction = model(inp[epoch, step, :])
+
+                # loss calculation
+                error = loss(prediction, target[epoch, step, :])
+                epoch_loss += error.item()
+
+                # error backpropagation
+                optimizer.zero_grad()
+                error.backward(**error_kwargs)
+                optimizer.step(**step_kwargs)
+
+                # results storage
+                if step % sampling_steps == 0:
+                    obs.record(prediction, error.item(), self.rnn_layer.record(rec_vars))
+
+            # display progress
+            if verbose:
+                print(f'Progress: {epoch+1}/{epochs} training epochs finished.')
+                print(f'Epoch loss: {epoch_loss}.')
+                print('')
 
     def _relabel_var(self, var: str) -> str:
         try:

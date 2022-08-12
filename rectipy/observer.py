@@ -38,6 +38,9 @@ class Observer:
         if record_output:
             self._recordings['out'] = []
 
+    def __getitem__(self, item: str):
+        return self._recordings[item]
+
     @property
     def recorded_rnn_variables(self) -> list:
         """RNN state variables that are recorded by this `Observer` instance.

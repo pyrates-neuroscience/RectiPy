@@ -32,4 +32,5 @@ __status__ = "Development"
 __version__ = "0.1.5"
 
 from .network import Network
-from .utility import random_connectivity, circular_connectivity
+from .utility import random_connectivity, circular_connectivity, input_connections
+from .utility import wta_score

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2
+
+### 0.2.0
+
+- renamed the model template package to avoid interference with the pyrates-intrinsic model template package
+- added a utility function for the generation of input weight matrices
+- added a utility function for winner-takes-all score calculation
+- added getitem methods to the `Network` (integer-based indexing, returns layers) and `Observer` (string-based indexing, returns recordings) classes
+- added the possibility to the `Network.train` method to train in epochs
+- made the `device` argument of `Network.compile` optional
+- ensured that the activation functions of the `OutputLayer` are always applied to the first dimension of the outputs
+
 ## 0.1
 
 ### 0.1.5

@@ -117,7 +117,7 @@ class SRNNLayer(RNNLayer):
         self._inp_net = input_net - 3
         self._thresh = spike_threshold
         self._reset = spike_reset
-        self._var = torch.tensor(spike_var)
+        self._var = torch.tensor(spike_var, dtype=torch.int64)
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,

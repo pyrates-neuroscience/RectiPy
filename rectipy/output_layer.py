@@ -2,11 +2,12 @@ import torch
 from torch.nn import Module, Linear, Tanh, Softmax, Softmin, Sigmoid, Identity, Sequential
 from typing import Iterator
 from .input_layer import LinearStatic
+import numpy as np
 
 
 class OutputLayer(Module):
 
-    def __init__(self, n: int, m: int, weights: torch.Tensor = None, trainable: bool = False,
+    def __init__(self, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
                  activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs):
 
         super().__init__()
@@ -17,11 +18,14 @@ class OutputLayer(Module):
         else:
             if weights is None:
                 weights = torch.randn(m, n, dtype=dtype)
-            elif weights.dtype != dtype:
+            else:
+                if weights.shape[0] == n and weights.shape[1] == m:
+                    weights = weights.T
+                elif weights.shape[0] != m or weights.shape[1] != n:
+                    raise ValueError(
+                        "Shape of the provided weights does not match the input and output dimensions of the"
+                        "output layer.")
                 weights = torch.tensor(weights, dtype=dtype)
-            if weights.shape[0] != m or weights.shape[1] != n:
-                raise ValueError("Shape of the provided weights does not match the input and output dimensions of the"
-                                 "output layer.")
             layer = LinearStatic(weights)
 
         # define output function

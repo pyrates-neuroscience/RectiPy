@@ -38,7 +38,7 @@ def test_2_1_output_layer():
     # parameters
     n = 10
     m = 2
-    weights = torch.randn(m, n)
+    weights = np.random.randn(m, n)
     x = torch.randn(n, dtype=torch.float64)
 
     # create different output layer instances

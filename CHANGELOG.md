@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3
+
+### 0.3.0
+
+- added utility function `readout` that allows to train a readout classifier on collected network states and targets
+- added new gradient descent optimizer options
+- added possibility of making an optimizer step only every `x` training steps (gradients will accumulate over these steps)
+
 ## 0.2
 
 ### 0.2.0

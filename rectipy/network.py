@@ -121,7 +121,7 @@ class Network:
         """
         return self._model
 
-    def add_input_layer(self, n: int, m: int, weights: torch.Tensor = None, trainable: bool = False,
+    def add_input_layer(self, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
                         dtype: torch.dtype = torch.float64) -> InputLayer:
         """Add an input layer to the network. Networks can have either 1 or 0 input layers.
 
@@ -154,7 +154,7 @@ class Network:
         # return layer
         return self.input_layer
 
-    def add_output_layer(self, n: int, k: int, weights: torch.Tensor = None, trainable: bool = False,
+    def add_output_layer(self, n: int, k: int, weights: np.ndarray = None, trainable: bool = False,
                          activation_function: str = None, dtype: torch.dtype = torch.float64) -> OutputLayer:
         """Add an output layer to the network. Networks can have either 1 or 0 output layers.
 
@@ -202,7 +202,7 @@ class Network:
 
     def train(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
               loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, device: str = None,
-              sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
+              sampling_steps: int = 100, optimizer_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
         """Optimize model parameters such that the model output matches the provided targets as close as possible.
 
         Parameters
@@ -217,9 +217,11 @@ class Network:
             Name of the optimization algorithm to use. Available options are:
             - 'sgd' for `torch.optim.SGD`
             - 'adam' for `torch.optim.Adam`
+            - 'adamw' for torch.optim.AdamW
             - 'adagrad' for `torch.optim.Adagrad`
-            - 'lbfgs' for `torch.optim.LBFGS`
+            - 'adadelta' for `torch.optim.Adadelta`
             - 'rmsprop' for `torch.optim.RMSprop`
+            - 'rprop' for `torch.optim.Rprop`
         optimizer_kwargs
             Additional keyword arguments provided to the initialization of the optimizer.
         loss
@@ -285,10 +287,10 @@ class Network:
         t0 = perf_counter()
         if len(inp_tensor.shape) > 2:
             self._train_epochs(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs,
-                               step_kwargs, sampling_steps=sampling_steps, verbose=verbose)
+                               step_kwargs, sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
         else:
             self._train(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                        sampling_steps=sampling_steps, verbose=verbose)
+                        sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
@@ -437,7 +439,7 @@ class Network:
 
     def _train(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
                optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict,
-               sampling_steps: int = 100, verbose: bool = False):
+               sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
 
         if inp.shape[0] != target.shape[0]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
@@ -453,9 +455,10 @@ class Network:
             error = loss(prediction, target[step, :])
 
             # error backpropagation
-            optimizer.zero_grad()
             error.backward(**error_kwargs)
-            optimizer.step(**step_kwargs)
+            if step % optim_steps == 0:
+                optimizer.step(**step_kwargs)
+                optimizer.zero_grad()
 
             # results storage
             if step % sampling_steps == 0:
@@ -465,7 +468,7 @@ class Network:
 
     def _train_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
                       optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
-                      step_kwargs: dict, sampling_steps: int = 100, verbose: bool = False):
+                      step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
 
         if inp.shape[0] != target.shape[0] or inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
@@ -486,9 +489,10 @@ class Network:
                 epoch_loss += error.item()
 
                 # error backpropagation
-                optimizer.zero_grad()
                 error.backward(**error_kwargs)
-                optimizer.step(**step_kwargs)
+                if step % optim_steps == 0:
+                    optimizer.step(**step_kwargs)
+                    optimizer.zero_grad()
 
                 # results storage
                 if step % sampling_steps == 0:
@@ -517,14 +521,18 @@ class Network:
             opt = torch.optim.SGD
         elif optimizer == 'adam':
             opt = torch.optim.Adam
+        elif optimizer == 'adamw':
+            opt = torch.optim.AdamW
         elif optimizer == 'adagrad':
             opt = torch.optim.Adagrad
-        elif optimizer == 'lbfgs':
-            opt = torch.optim.LBFGS
+        elif optimizer == 'adadelta':
+            opt = torch.optim.Adadelta
         elif optimizer == 'rmsprop':
             opt = torch.optim.RMSprop
+        elif optimizer == 'rprop':
+            opt = torch.optim.Rprop
         else:
-            raise ValueError('Invalid optimizer choice. Please see the documentation of the `Network.run()` '
+            raise ValueError('Invalid optimizer choice. Please see the documentation of the `Network.train()` '
                              'method for valid options.')
         return opt(model_params, lr=lr, **optimizer_kwargs)
 
@@ -553,7 +561,7 @@ class Network:
             from torch.nn import HingeEmbeddingLoss
             l = HingeEmbeddingLoss
         else:
-            raise ValueError('Invalid loss function choice. Please see the documentation of the `Network.run()` '
+            raise ValueError('Invalid loss function choice. Please see the documentation of the `Network.train()` '
                              'method for valid options.')
         return l(**loss_kwargs)
 

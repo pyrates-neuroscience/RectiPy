@@ -3,9 +3,9 @@
 
 # imports
 from rectipy.input_layer import InputLayer, LinearStatic, Linear
-import torch
 import pytest
 import numpy as np
+import torch
 
 # meta infos
 __author__ = "Richard Gast"
@@ -62,7 +62,7 @@ def test_1_2_input_layer():
     # parameters
     n = 10
     m = 2
-    weights = torch.randn(n, m)
+    weights = np.random.randn(n, m)
     x = torch.randn(m, dtype=torch.float64)
 
     # create different instances of the input layer

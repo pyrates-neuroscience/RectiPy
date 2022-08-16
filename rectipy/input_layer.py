@@ -1,11 +1,12 @@
 import torch
 from torch.nn import Module, Linear
 from typing import Iterator
+import numpy as np
 
 
 class InputLayer(Module):
 
-    def __init__(self, n: int, m: int, weights: torch.Tensor = None, trainable: bool = False,
+    def __init__(self, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
                  dtype: torch.dtype = torch.float64):
         super().__init__()
         if trainable:
@@ -13,7 +14,7 @@ class InputLayer(Module):
         else:
             if weights is None:
                 weights = torch.randn(n, m, dtype=dtype)
-            elif weights.dtype != dtype:
+            else:
                 weights = torch.tensor(weights, dtype=dtype)
             if weights.shape[0] != n or weights.shape[1] != m:
                 raise ValueError("Shape of the provided weights does not match the input and output dimensions of the"

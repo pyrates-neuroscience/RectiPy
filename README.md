@@ -12,6 +12,7 @@ that allows for lightweight implementations of recurrent neural networks (RNNs) 
 differential equations.
 `RectiPy` provides an intuitive `YAML` interface for model definition, and leverages [PyRates](https://github.com/pyrates-neuroscience/PyRates)
 to translate these model definitions into `PyTorch` functions.
+This way, users can easily define their own neuron models, spike-based or rate-based, and use them to create a RNN model.
 All model training, testing, as well as numerical integration of the differential equations is also performed in `PyTorch`.
 Thus, `RectiPy` comes with all the gradient-based optimization and parallelization features that `PyTorch` provides.
 
@@ -60,7 +61,6 @@ Again, this will also install the dependencies of the software listed below.
 - torch
 - pyrates
 - numpy
-- scipy
 - matplotlib
 
 ## Contact

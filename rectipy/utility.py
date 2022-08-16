@@ -64,8 +64,8 @@ def input_connections(n: int, m: int, p: float, variance: float = 1.0, zero_mean
     return C
 
 
-# score functions
-#################
+# function for optimization
+###########################
 
 
 def wta_score(x: np.ndarray, y: np.ndarray):
@@ -73,3 +73,39 @@ def wta_score(x: np.ndarray, y: np.ndarray):
     for idx in range(x.shape[0]):
         z[idx] = 1.0 if np.argmax(x[idx, :]) == np.argmax(y[idx, :]) else 0.0
     return np.mean(z)
+
+
+def readout(X: np.ndarray, y: np.ndarray, k: int = 1, verbose: bool = True, **kwargs) -> tuple:
+
+    # imports
+    from sklearn.linear_model import Ridge
+    from sklearn.model_selection import StratifiedKFold
+
+    # perform ridge regression
+    if k > 1:
+        splitter = StratifiedKFold(n_splits=k)
+        scores, coefs = [], []
+        for i, (train_idx, test_idx) in enumerate(splitter.split(X=X, y=y)):
+            classifier = Ridge(**kwargs)
+            classifier.fit(X[train_idx], y[train_idx])
+            scores.append(classifier.score(X=X[test_idx], y=y[test_idx]))
+            coefs.append(classifier.coef_)
+    else:
+        classifier = Ridge(**kwargs)
+        classifier.fit(X, y)
+        scores = [classifier.score(X=X, y=y)]
+        coefs = [classifier.coef_]
+
+    # store readout weights
+    w_out = np.mean(coefs, axis=0)
+    avg_score = np.mean(scores)
+
+    if verbose:
+        print(f'Finished readout training.')
+
+        if k > 1:
+            print(f'Average, cross-validated classification performance across {k} test folds: {avg_score}')
+        else:
+            print(f'Classification performance on training data: {avg_score}')
+
+    return avg_score, w_out

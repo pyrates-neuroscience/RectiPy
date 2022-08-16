@@ -11,15 +11,18 @@ class RNNLayer(Module):
                  dtype: torch.dtype = torch.float64, train_params: list = None, record_vars: dict = None):
 
         super().__init__()
-        self.y = torch.tensor(rnn_args[1].detach().numpy(), dtype=dtype)
-        self.dy = torch.tensor(rnn_args[2].detach().numpy(), dtype=dtype)
+        if rnn_args[0].shape != rnn_args[1].shape:
+            raise ValueError("Entries 1 and 2 of `rnn_args` should provide the state vector and vector-field of the "
+                             "RNN, and thus have to agree in shape.")
+        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype)
+        self.dy = torch.tensor(rnn_args[1].detach().numpy(), dtype=dtype)
         self.output = torch.tensor(output, dtype=torch.int64)
         self.dt = dt
         self.func = rnn_func
-        self.args = rnn_args[3:]
-        self.train_params = [self.args[idx-3] for idx in train_params] if train_params else []
+        self.args = rnn_args[2:]
+        self.train_params = [self.args[idx-2] for idx in train_params] if train_params else []
         self._record_vars = record_vars
-        self._inp_ext = input_ext - 3
+        self._inp_ext = input_ext - 2
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -34,9 +37,9 @@ class RNNLayer(Module):
                                                                                step_size=dt, **kwargs)
 
         # get variable indices
-        input_idx = keys.index(input_var)
+        input_idx = cls._get_param_indices(template, [input_var], keys)[0]
         if train_params:
-            train_params = [keys.index(p) for p in train_params]
+            train_params = cls._get_param_indices(template, train_params, keys)
         var_indices = cls._get_var_indices(template, output_var, recording_vars=record_vars)
 
         if clear_template:
@@ -50,8 +53,8 @@ class RNNLayer(Module):
         self.y = self.y + self.dt * self.dy
         return self.y[self.output]
 
-    def record(self, vars: list):
-        for v in vars:
+    def record(self, variables: list):
+        for v in variables:
             yield self.y[self._record_vars[v]]
 
     def parameters(self, recurse: bool = True) -> Iterator:
@@ -87,7 +90,7 @@ class RNNLayer(Module):
         # generate rnn function
         func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False, **kwargs)
 
-        return func, args, keys, template, state_var_indices
+        return func, args[1:], keys, template, state_var_indices
 
     @staticmethod
     def _get_var_indices(template: CircuitTemplate, out_var: str, spike_var: str = None, recording_vars: list = None):
@@ -105,6 +108,20 @@ class RNNLayer(Module):
                 results[var] = var_indices.pop(var)
         return results
 
+    @staticmethod
+    def _get_param_indices(template: CircuitTemplate, target_params: list, all_params: tuple, node_key: str = "n0"):
+        indices = []
+        for p in target_params:
+            try:
+                p_tmp, _ = template.get_var(f"{node_key}/{p}")
+                if hasattr(p_tmp, 'name'):
+                    p_tmp = p_tmp.name
+                idx = all_params.index(p_tmp)
+            except IndexError:
+                idx = all_params.index(p)
+            indices.append(idx)
+        return indices
+
 
 class SRNNLayer(RNNLayer):
 
@@ -114,7 +131,7 @@ class SRNNLayer(RNNLayer):
 
         super().__init__(rnn_func, rnn_args, input_ext, output, dt=dt, dtype=dtype, train_params=train_params,
                          record_vars=record_vars)
-        self._inp_net = input_net - 3
+        self._inp_net = input_net - 2
         self._thresh = spike_threshold
         self._reset = spike_reset
         self._var = torch.tensor(spike_var, dtype=torch.int64)
@@ -137,16 +154,9 @@ class SRNNLayer(RNNLayer):
                                                                **kwargs)
 
         # get variable indices
-        in_ext, _ = template.get_var(f"n0/{input_var_ext}")
-        in_net, _ = template.get_var(f"n0/{input_var_net}")
-        input_ext_idx = keys.index(in_ext.name)
-        input_net_idx = keys.index(in_net.name)
+        input_ext_idx, input_net_idx = cls._get_param_indices(template, [input_var_ext, input_var_net], keys)
         if train_params:
-            train_param_indices = []
-            for p in train_params:
-                p_tmp, _ = template.get_var(f"n0/{p}")
-                train_param_indices.append(keys.index(p_tmp))
-            train_params = train_param_indices
+            train_params = cls._get_param_indices(template, train_params, keys)
         var_indices = cls._get_var_indices(template, output_var, spike_var=spike_var, recording_vars=record_vars)
 
         if clear_template:

@@ -1,12 +1,25 @@
 import numpy as np
 from scipy.stats import rv_discrete, bernoulli
 
-
 # helper functions
 ##################
 
 
 def retrieve_from_dict(keys: list, data: dict) -> dict:
+    """Remove dictionary entries and collect them in a new dictionary.
+
+    Parameters
+    ----------
+    keys
+        Entries in `data` that are to be removed from `data` and collected in a new dict.
+    data
+        Original dictionary.
+
+    Returns
+    -------
+    dict
+        New dictionary that contains the key-value pairs that were originally stored in `data` under `keys`.
+    """
     new_data = {}
     for key in keys:
         if key in data:
@@ -15,6 +28,22 @@ def retrieve_from_dict(keys: list, data: dict) -> dict:
 
 
 def add_op_name(op: str, var: str, new_var_names: dict) -> str:
+    """Adds an operator name to a variable identifier.
+
+    Parameters
+    ----------
+    op
+        Operator name to be added.
+    var
+        Current variable identifier.
+    new_var_names
+        Dictionary that contains the maping between old and updated varaible identifiers.
+
+    Returns
+    -------
+    str
+        Updated variable name.
+    """
     if '/' in var:
         return var
     new_var_names[var] = f"{op}/{var}"
@@ -32,6 +61,23 @@ def _wrap(idxs: np.ndarray, N: int) -> np.ndarray:
 
 
 def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -> np.ndarray:
+    """Generate a coupling matrix between nodes aligned on a circle.
+
+    Parameters
+    ----------
+    N
+        Number of nodes.
+    p
+        Connection probability.
+    spatial_distribution
+        Probability distribution defined over space. Will be used to draw indices of nodes from which each node in the
+        circular network receives inputs.
+
+    Returns
+    -------
+    np.ndarray
+        2D coupling matrix (N x N).
+    """
     C = np.zeros((N, N))
     n_conns = int(N*p)
     for n in range(N):
@@ -44,6 +90,24 @@ def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -
 
 
 def random_connectivity(n: int, m: int, p: float, normalize: bool = True) -> np.ndarray:
+    """Generate a random coupling matrix.
+
+    Parameters
+    ----------
+    n
+        Number of rows
+    m
+        Number of columns
+    p
+        Coupling probability.
+    normalize
+        If true, all rows will be normalized such that they sum up to 1.
+
+    Returns
+    -------
+    np.ndarray
+        2D couping matrix (n x m).
+    """
     C = np.zeros((n, m))
     n_conns = int(m*p)
     positions = np.arange(start=0, stop=m)
@@ -54,6 +118,26 @@ def random_connectivity(n: int, m: int, p: float, normalize: bool = True) -> np.
 
 
 def input_connections(n: int, m: int, p: float, variance: float = 1.0, zero_mean: bool = True):
+    """Generate random input connections.
+
+    Parameters
+    ----------
+    n
+        Number of rows.
+    m
+        Number of columns.
+    p
+        Coupling probability.
+    variance
+        Variance of the randomly drawn input weights in each row.
+    zero_mean
+        If true, input weights in each row will be normalized such that they sum up to 0.
+
+    Returns
+    -------
+    np.ndarray
+        2D input weight matrix (n x m)
+    """
     C_tmp = random_connectivity(m, n, p, normalize=False).T
     C = np.zeros_like(C_tmp)
     for col in range(C_tmp.shape[1]):
@@ -68,14 +152,50 @@ def input_connections(n: int, m: int, p: float, variance: float = 1.0, zero_mean
 ###########################
 
 
-def wta_score(x: np.ndarray, y: np.ndarray):
-    z = np.zeros((x.shape[0]))
+def wta_score(x: np.ndarray, y: np.ndarray) -> float:
+    """Calculates the winner-takes-all score.
+
+    Parameters
+    ----------
+    x
+        2D array, where rows are samples and columns are features.
+    y
+        2D array, where rows are samples and columns are features.
+
+    Returns
+    -------
+    float
+        WTA score.
+
+    """
+    z = np.zeros((x.shape[0],))
     for idx in range(x.shape[0]):
         z[idx] = 1.0 if np.argmax(x[idx, :]) == np.argmax(y[idx, :]) else 0.0
-    return np.mean(z)
+    return float(np.mean(z))
 
 
 def readout(X: np.ndarray, y: np.ndarray, k: int = 1, verbose: bool = True, **kwargs) -> tuple:
+    """Uses Ridge regression to find a set of coefficients `a` that minimizes `y - aX`.
+
+    Parameters
+    ----------
+    X
+        2D array of data (rows = samples, columns = features).
+    y
+        2D array of data (rows = samples, columns = output dimensions).
+    k
+        If larger 1, `k` splits into training and testing data will be performed, and for each of these splits a ridge
+        regression will be calculated.
+    verbose
+        If true, updates about the regression procedure will be displayed.
+    kwargs
+        Additional keyword arguments passed to `sklearn.linear_model.Ridge`
+
+    Returns
+    -------
+    tuple
+        Average loss on training data, and readout weights.
+    """
 
     # imports
     from sklearn.linear_model import Ridge

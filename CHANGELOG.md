@@ -2,6 +2,13 @@
 
 ## 0.3
 
+### 0.3.1
+
+- improved documentation
+- added pytests for the initialization functions of the rnn layer
+- debugged index-finding functions for trainable parameters in the rnn layer
+- improved integration of pyrates functions into rnn layer
+
 ### 0.3.0
 
 - added utility function `readout` that allows to train a readout classifier on collected network states and targets

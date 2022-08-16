@@ -68,7 +68,7 @@ def test_2_1_output_layer():
 
     # these tests should fail
     with pytest.raises(ValueError):
-        OutputLayer(n, m, weights=weights.T)
+        OutputLayer(n, m, weights=np.random.randn(n+1, m))
     with pytest.raises(RuntimeError):
         out6.forward(x)
         out2.forward(x)

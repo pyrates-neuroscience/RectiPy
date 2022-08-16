@@ -7,7 +7,7 @@ import pickle
 ##############
 
 # network parameters
-N = 1000
+N = 500
 p = 0.06
 eta = 0.0
 Delta = 0.1

@@ -222,10 +222,9 @@ def readout(X: np.ndarray, y: np.ndarray, k: int = 1, verbose: bool = True, **kw
 
     if verbose:
         print(f'Finished readout training.')
-
         if k > 1:
-            print(f'Average, cross-validated classification performance across {k} test folds: {avg_score}')
+            print(fr'Average, cross-validated $R^2$ score across {k} test folds: {avg_score}')
         else:
-            print(f'Classification performance on training data: {avg_score}')
+            print(fr'$R^2$ score on training data: {avg_score}')
 
     return avg_score, w_out

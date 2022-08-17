@@ -433,6 +433,7 @@ class Network:
         rnn_layer = self._get_layer(self.rnn_layer)
         layers = in_layer + rnn_layer + out_layer
         model = Sequential(*layers)
+        self._model = model
         if device is not None:
             model.to(device)
         return model

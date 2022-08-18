@@ -262,8 +262,6 @@ class Network:
                              '`targets` agree in the first dimension.')
 
         # set up model
-        if not list(self.rnn_layer.parameters()):
-            self.rnn_layer.detach()
         model = self.compile(device) if self._model is None else self._model
 
         # initialize loss function
@@ -434,9 +432,48 @@ class Network:
         layers = in_layer + rnn_layer + out_layer
         model = Sequential(*layers)
         self._model = model
+        if not list(self.rnn_layer.parameters()):
+            self.rnn_layer.detach()
+        else:
+            for p in self.parameters():
+                p.requires_grad = True
         if device is not None:
             model.to(device)
         return model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward method as implemented for any `torch.Module`.
+
+        Parameters
+        ----------
+        x
+            Input tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
+        """
+        return self._model(x)
+
+    def parameters(self, recurse: bool = True) -> Iterator:
+        """Yields the trainable parameters of the network model.
+
+        Parameters
+        ----------
+        recurse
+            If true, yields parameters of all submodules.
+
+        Yields
+        ------
+        Iterator
+            Trainable model parameters.
+        """
+        if self._model is None:
+            self.compile()
+        for layer in self._model:
+            for p in layer.parameters(recurse):
+                yield p
 
     def _train(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
                optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict,

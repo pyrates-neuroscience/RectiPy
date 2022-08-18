@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4
+
+### 0.4.0
+
+- removed all in-place operations for non-spiking networks
+- changed pyrates interface such that vector-field updates are not performed in-place anymore
+- only in-place operation left: Spike resetting
+- added methods `Network.forward` and `Network.parameters` that allow the class `Network` to be embedded in larger network structures.
+
 ## 0.3
 
 ### 0.3.1

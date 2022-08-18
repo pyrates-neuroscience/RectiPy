@@ -11,18 +11,15 @@ class RNNLayer(Module):
                  dtype: torch.dtype = torch.float64, train_params: list = None, record_vars: dict = None):
 
         super().__init__()
-        if rnn_args[0].shape != rnn_args[1].shape:
-            raise ValueError("Entries 1 and 2 of `rnn_args` should provide the state vector and vector-field of the "
-                             "RNN, and thus have to agree in shape.")
         self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype)
-        self.dy = torch.tensor(rnn_args[1].detach().numpy(), dtype=dtype)
+        self.dy = torch.zeros_like(self.y)
         self.output = torch.tensor(output, dtype=torch.int64)
         self.dt = dt
         self.func = rnn_func
-        self.args = rnn_args[2:]
-        self.train_params = [self.args[idx-2] for idx in train_params] if train_params else []
+        self.args = list(rnn_args[1:])
+        self.train_params = [self.args[idx-1] for idx in train_params] if train_params else []
         self._record_vars = record_vars
-        self._inp_ext = input_ext - 2
+        self._inp_ext = input_ext - 1
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -48,8 +45,8 @@ class RNNLayer(Module):
                    record_vars=var_indices)
 
     def forward(self, x):
-        self.args[self._inp_ext][:] = x
-        self.dy = self.func(0, self.y, self.dy, *self.args)
+        self.args[self._inp_ext] = x
+        self.dy = self.func(0, self.y.detach(), *self.args)
         self.y = self.y + self.dt * self.dy
         return self.y[self.output]
 
@@ -62,10 +59,9 @@ class RNNLayer(Module):
             yield p
 
     def detach(self):
-
         self.y = self.y.detach()
         self.dy = self.dy.detach()
-        self.args = tuple([arg.detach() for arg in self.args])
+        self.args = [arg.detach() for arg in self.args]
 
     @classmethod
     def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -81,16 +77,19 @@ class RNNLayer(Module):
         template = CircuitTemplate(name='reservoir', nodes=nodes)
 
         # add edges to network
-        template.add_edges_from_matrix(source_var, target_var, nodes=list(nodes.keys()), weight=weights)
+        edge_attr = kwargs.pop("edge_attr", None)
+        template.add_edges_from_matrix(source_var, target_var, nodes=list(nodes.keys()), weight=weights,
+                                       edge_attr=edge_attr)
 
         # add variable updates
         if 'node_vars' in kwargs:
             template.update_var(node_vars=kwargs.pop('node_vars', None))
 
         # generate rnn function
-        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False, **kwargs)
+        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False,
+                                                                    inplace_vectorfield=False, **kwargs)
 
-        return func, args[1:], keys, template, state_var_indices
+        return func, args[1:], keys[1:], template, state_var_indices
 
     @staticmethod
     def _get_var_indices(template: CircuitTemplate, out_var: str, spike_var: str = None, recording_vars: list = None):
@@ -166,13 +165,12 @@ class SRNNLayer(RNNLayer):
 
     def forward(self, x):
         spikes = self.y[self._var] >= self._thresh
-        self.args[self._inp_net][spikes] = 1.0/self.dt
-        self.args[self._inp_ext][:] = x
-        self.dy = self.func(0, self.y, self.dy, *self.args)
+        self.args[self._inp_net] = spikes/self.dt
+        self.args[self._inp_ext] = x
+        self.dy = self.func(0, self.y, *self.args)
         self.y = self.y + self.dt * self.dy
         self.reset(spikes)
         return self.y[self.output]
 
     def reset(self, spikes: torch.Tensor):
         self.y[self._var[spikes]] = self._reset
-        self.args[self._inp_net][:] = 0.0

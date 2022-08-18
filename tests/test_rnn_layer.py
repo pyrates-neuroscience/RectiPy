@@ -72,7 +72,3 @@ def test_3_1_rnn_init():
     # these tests should fail
     with pytest.raises(KeyError):
         list(rnn2.record(['li_op/u']))
-    with pytest.raises(ValueError):
-        args = (torch.zeros((n,)), torch.zeros((n+1,)), torch.zeros((n,)), torch.zeros((n,)), torch.tensor(weights),
-                1.0)
-        RNNLayer(func, args, 3, list(range(n)))

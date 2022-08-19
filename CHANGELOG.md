@@ -8,6 +8,8 @@
 - changed pyrates interface such that vector-field updates are not performed in-place anymore
 - only in-place operation left: Spike resetting
 - added methods `Network.forward` and `Network.parameters` that allow the class `Network` to be embedded in larger network structures.
+- added new tests for the rnn layer
+- debugged `detach` method in rnn layer
 
 ## 0.3
 

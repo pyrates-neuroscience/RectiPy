@@ -39,16 +39,16 @@ C_mask = torch.abs(C_target) < 1e-5
 # model optimization
 ####################
 
-tol = 1e-2
-alpha = 0.9
-error = 100.0
+tol = 1e-3
+alpha = 0.999
+error = 1.0
 dt = 1e-2
 step = 0
 freq = 0.2
 amp = 0.1
-update_steps = 10
+update_steps = 1
 disp_steps = 500
-max_steps = 5000
+max_steps = 20000
 loss = torch.nn.MSELoss()
 opt = torch.optim.SGD(learning_net.parameters(), lr=1e-2)
 predictions, targets, losses = [], [], []
@@ -71,18 +71,32 @@ while error > tol and step < max_steps:
     targets.append(target.detach().numpy())
     losses.append(error)
 
+# model testing
+###############
+
+old_steps = step
+test_steps = 5000
+targets2, predictions2 = [], []
+while step < old_steps + test_steps:
+    inp = np.sin(2 * np.pi * freq * step * dt) * amp
+    target = target_net.forward(inp)
+    prediction = learning_net.forward(inp)
+    predictions2.append(prediction.detach().numpy())
+    targets2.append(target.detach().numpy())
+    step +=1
+
 # plotting
 ##########
 
 fig, axes = plt.subplots(nrows=3, figsize=(12, 8))
 ax1 = axes[0]
 ax1.plot(predictions)
-ax1.set_title('predictions')
+ax1.set_title('predictions (training)')
 ax1.set_xlabel('steps')
 ax1.set_ylabel('u')
 ax2 = axes[1]
-ax2.plot(predictions)
-ax2.set_title('targets')
+ax2.plot(targets)
+ax2.set_title('targets (training)')
 ax2.set_xlabel('steps')
 ax2.set_ylabel('u')
 ax3 = axes[2]
@@ -99,6 +113,19 @@ ax1.set_title("target coupling")
 ax2 = axes[1]
 ax2.imshow(learning_net.rnn_layer.train_params[0].detach().numpy(), aspect='auto')
 ax2.set_title("fitted coupling")
+plt.tight_layout()
+
+fig, axes = plt.subplots(nrows=2, figsize=(12, 6))
+ax1 = axes[0]
+ax1.plot(predictions2)
+ax1.set_title('predictions (testing)')
+ax1.set_xlabel('steps')
+ax1.set_ylabel('u')
+ax2 = axes[1]
+ax2.plot(targets2)
+ax2.set_title('targets (testing)')
+ax2.set_xlabel('steps')
+ax2.set_ylabel('u')
 plt.tight_layout()
 
 plt.show()

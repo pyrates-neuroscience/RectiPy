@@ -11,7 +11,7 @@ class RNNLayer(Module):
                  dtype: torch.dtype = torch.float64, train_params: list = None, record_vars: dict = None):
 
         super().__init__()
-        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype)
+        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad)
         self.dy = torch.zeros_like(self.y)
         self.output = torch.tensor(output, dtype=torch.int64)
         self.dt = dt
@@ -61,7 +61,7 @@ class RNNLayer(Module):
     def detach(self):
         self.y = self.y.detach()
         self.dy = self.dy.detach()
-        self.args = [arg.detach() for arg in self.args]
+        self.args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self.args]
 
     @classmethod
     def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -130,7 +130,7 @@ class SRNNLayer(RNNLayer):
 
         super().__init__(rnn_func, rnn_args, input_ext, output, dt=dt, dtype=dtype, train_params=train_params,
                          record_vars=record_vars)
-        self._inp_net = input_net - 2
+        self._inp_net = input_net - 1
         self._thresh = spike_threshold
         self._reset = spike_reset
         self._var = torch.tensor(spike_var, dtype=torch.int64)

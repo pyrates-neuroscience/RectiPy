@@ -24,7 +24,7 @@ def setup_module():
 
 
 # test accuracy
-accuracy = 1e-4
+accuracy = 1e-3
 
 
 # rate network function
@@ -64,7 +64,7 @@ def test_3_1_rnn_init():
     assert isinstance(rnn2, RNNLayer)
     assert isinstance(rnn3, SRNNLayer)
     assert len(rnn2.y) == n
-    assert len(rnn3.dy) == 2*n
+    assert len(rnn3.y) == 2*n
     assert len(list(rnn4.parameters())) - len(list(rnn2.parameters())) == 1
     assert list(rnn4.record(['li_op/u']))[0].shape[0] == n
 

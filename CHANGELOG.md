@@ -8,8 +8,11 @@
 - changed pyrates interface such that vector-field updates are not performed in-place anymore
 - only in-place operation left: Spike resetting
 - added methods `Network.forward` and `Network.parameters` that allow the class `Network` to be embedded in larger network structures.
+- added method `RNNLayer.reset` as a method that can be used to reset the state vector of the RNN
 - added new tests for the rnn layer
 - debugged `detach` method in rnn layer
+- debugged issues with in-place operations and autograd
+- added a new example for parameter fitting within the RNN layer
 
 ## 0.3
 

@@ -12,7 +12,6 @@ class RNNLayer(Module):
 
         super().__init__()
         self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad)
-        self.dy = torch.zeros_like(self.y)
         self.output = torch.tensor(output, dtype=torch.int64)
         self.dt = dt
         self.func = rnn_func
@@ -46,8 +45,9 @@ class RNNLayer(Module):
 
     def forward(self, x):
         self.args[self._inp_ext] = x
-        self.dy = self.func(0, self.y.detach(), *self.args)
-        self.y = self.y + self.dt * self.dy
+        y_old = self.y.detach()
+        dy = self.func(0, y_old, *self.args)
+        self.y = y_old + self.dt * dy
         return self.y[self.output]
 
     def record(self, variables: list):
@@ -60,8 +60,15 @@ class RNNLayer(Module):
 
     def detach(self):
         self.y = self.y.detach()
-        self.dy = self.dy.detach()
         self.args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self.args]
+
+    def reset(self, y: np.ndarray, idx: np.ndarray = None):
+        if idx is None:
+            self.y = torch.tensor(y, dtype=self.y.dtype)
+        else:
+            y_new = self.y.clone()
+            y_new[torch.tensor(idx, dtype=torch.long)] = torch.tensor(y, dtype=y_new.dtype)
+            self.y = y_new
 
     @classmethod
     def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -167,10 +174,11 @@ class SRNNLayer(RNNLayer):
         spikes = self.y[self._var] >= self._thresh
         self.args[self._inp_net] = spikes/self.dt
         self.args[self._inp_ext] = x
-        self.dy = self.func(0, self.y, *self.args)
-        self.y = self.y + self.dt * self.dy
-        self.reset(spikes)
+        y_old = self.y.detach()
+        dy = self.func(0, y_old, *self.args)
+        self.y = y_old + self.dt * dy
+        self.spike_reset(spikes)
         return self.y[self.output]
 
-    def reset(self, spikes: torch.Tensor):
+    def spike_reset(self, spikes: torch.Tensor):
         self.y[self._var[spikes]] = self._reset

@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.stats import rv_discrete, bernoulli
+from typing import Union
+
 
 # helper functions
 ##################
@@ -27,7 +29,7 @@ def retrieve_from_dict(keys: list, data: dict) -> dict:
     return new_data
 
 
-def add_op_name(op: str, var: str, new_var_names: dict) -> str:
+def add_op_name(op: str, var: Union[str, None], new_var_names: dict) -> Union[str, None]:
     """Adds an operator name to a variable identifier.
 
     Parameters
@@ -44,7 +46,7 @@ def add_op_name(op: str, var: str, new_var_names: dict) -> str:
     str
         Updated variable name.
     """
-    if '/' in var:
+    if var is None or '/' in var:
         return var
     new_var_names[var] = f"{op}/{var}"
     return new_var_names[var]

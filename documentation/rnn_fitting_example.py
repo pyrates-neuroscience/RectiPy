@@ -22,12 +22,12 @@ u_idx = np.arange(0, N)
 # initialize networks
 target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=C,
                                edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
-                               input_var_ext="li_op/I_ext", output_var="li_op/u", clear=True, float_precision="float64",
+                               input_var="li_op/I_ext", output_var="li_op/u", clear=True, float_precision="float64",
                                file_name='target_net', node_vars={'all/li_op/u': np.random.randn(N)})
 
 learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=C,
                                  edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
-                                 input_var_ext="li_op/I_ext", output_var="li_op/u", clear=False,
+                                 input_var="li_op/I_ext", output_var="li_op/u", clear=False,
                                  train_params=['li_op/J', 'li_op/tau'], float_precision="float64",
                                  node_vars={"all/li_op/J": J0, "all/li_op/tau": tau0},
                                  file_name='learning_net')

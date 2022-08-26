@@ -5,6 +5,7 @@
 ### 0.4.1
 
 - added new pytests that test the functionalities of the `RNNLayer.record` and `RNNLayer.reset` methods
+- added new pytests that test the initialization functions of `Network`
 
 ### 0.4.0
 

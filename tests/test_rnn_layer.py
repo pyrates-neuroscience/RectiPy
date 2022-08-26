@@ -1,4 +1,4 @@
-"""Test suite for the input layer functionalities.
+"""Test suite for the rnn layer functionalities.
 """
 
 # imports
@@ -18,9 +18,9 @@ __status__ = "Development"
 
 def setup_module():
     print("\n")
-    print("============================")
-    print("| Test Suite : Input layer |")
-    print("============================")
+    print("==========================")
+    print("| Test Suite : RNN Layer |")
+    print("==========================")
 
 
 # test accuracy
@@ -48,16 +48,17 @@ def test_3_1_rnn_init():
 
     # create different instances of RNNLayer
     rnn1 = RNNLayer(func, args, 1, list(range(n)))
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=weights,
+    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True)
+                              output_var="tanh_op/r", clear=True, verbose=False)
     rnn3 = SRNNLayer.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_pop", weights=weights,
-                               source_var="qif_op/s", target_var="qif_op/s_in", input_var_ext="qif_op/I_ext",
-                               output_var="qif_op/s", spike_var="qif_op/v", input_var_net="qif_op/spike",
-                               spike_threshold=1e3, spike_reset=-1e3, clear=True)
-    rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=weights,
+                               source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
+                               output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
+                               spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False)
+    rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, train_params=["weight"], record_vars=["li_op/u"])
+                              output_var="tanh_op/r", clear=True, train_params=["weight"], record_vars=["li_op/u"],
+                              verbose=False)
 
     # these tests should pass
     assert isinstance(rnn1, RNNLayer)
@@ -113,13 +114,13 @@ def test_3_3_forward():
     inp = torch.randn(n, dtype=dtype)
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, input_ext=inp_idx, output=list(range(n)))
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=weights,
+    rnn1 = RNNLayer(func, args, input_var=inp_idx, output=list(range(n)))
+    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, float_precision="float64")
-    rnn3 = RNNLayer(func, args + (1.0, ), input_ext=inp_idx, output=list(range(n)))
-    rnn4 = RNNLayer(func, args, input_ext=inp_idx+2, output=list(range(n)))
-    rnn5 = RNNLayer(func, args, input_ext=inp_idx, output=[0, 1, 2])
+                              output_var="tanh_op/r", clear=True, float_precision="float64", verbose=False)
+    rnn3 = RNNLayer(func, args + (1.0, ), input_var=inp_idx, output=list(range(n)))
+    rnn4 = RNNLayer(func, args, input_var=inp_idx + 2, output=list(range(n)))
+    rnn5 = RNNLayer(func, args, input_var=inp_idx, output=[0, 1, 2])
 
     # detach the rnns
     for rnn in [rnn1, rnn2, rnn3, rnn4, rnn5]:
@@ -146,7 +147,7 @@ def test_3_3_forward():
         rnn1.forward(np.random.randn(n))
 
 
-def test_record():
+def test_3_4_record():
     """Tests record method of RNNLayer.
     """
 
@@ -180,7 +181,7 @@ def test_record():
         _ = r1[1]
 
 
-def test_reset():
+def test_3_5_reset():
     """Tests reset method of RNNLayer
     """
 
@@ -201,16 +202,17 @@ def test_reset():
     r2 = rnn.forward(x)
     rnn.reset(y0)
     r3 = rnn.forward(x)
-    rnn.reset(y1)
-    r4 = rnn.forward(x)
     rnn.reset(y0[0:3], idx=np.arange(0, 3))
     r5 = rnn.forward(x)
+    rnn.reset(y1)
+    r4 = rnn.forward(x)
 
     # these tests should pass
     for z1, z2 in [(r1, r2), (r1, r4), (r1, r5)]:
         assert np.mean(np.abs(z1.detach().numpy() - z2.detach().numpy())) > 0
     assert np.mean(r1.detach().numpy() - r3.detach().numpy()) == pytest.approx(0, abs=accuracy, rel=accuracy)
     assert np.mean(r1.detach().numpy()[0:3] - r5.detach().numpy()[0:3]) == pytest.approx(0, abs=accuracy, rel=accuracy)
+    assert np.mean(r2.detach().numpy()[3:n] - r5.detach().numpy()[3:n]) == pytest.approx(0, abs=accuracy, rel=accuracy)
 
     # these tests should fail
     with pytest.raises(RuntimeError):

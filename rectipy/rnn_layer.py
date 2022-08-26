@@ -7,7 +7,7 @@ import numpy as np
 
 class RNNLayer(Module):
 
-    def __init__(self, rnn_func: Callable, rnn_args: tuple, input_ext: int, output: list, dt: float = 1e-3,
+    def __init__(self, rnn_func: Callable, rnn_args: tuple, input_var: int, output: list, dt: float = 1e-3,
                  dtype: torch.dtype = torch.float64, train_params: list = None, record_vars: dict = None):
 
         super().__init__()
@@ -18,7 +18,7 @@ class RNNLayer(Module):
         self.args = list(rnn_args[1:])
         self.train_params = [self.args[idx-1] for idx in train_params] if train_params else []
         self._record_vars = record_vars
-        self._inp_ext = input_ext - 1
+        self._inp_ext = input_var - 1
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -131,21 +131,21 @@ class RNNLayer(Module):
 
 class SRNNLayer(RNNLayer):
 
-    def __init__(self, rnn_func: Callable, rnn_args: tuple, input_ext: int, input_net: int, output: list,
-                 spike_var: list, spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
+    def __init__(self, rnn_func: Callable, rnn_args: tuple, input_var: int, spike_var: int, output: list,
+                 spike_def: list, spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
                  dtype: torch.dtype = torch.float64, train_params: list = None, record_vars: dict = None):
 
-        super().__init__(rnn_func, rnn_args, input_ext, output, dt=dt, dtype=dtype, train_params=train_params,
+        super().__init__(rnn_func, rnn_args, input_var, output, dt=dt, dtype=dtype, train_params=train_params,
                          record_vars=record_vars)
-        self._inp_net = input_net - 1
+        self._spike_var = spike_var - 1
         self._thresh = spike_threshold
         self._reset = spike_reset
-        self._var = torch.tensor(spike_var, dtype=torch.int64)
+        self._spike_def = torch.tensor(spike_def, dtype=torch.int64)
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
-                  input_var_ext: str, input_var_net: str, output_var: str, spike_var: str, train_params: list = None,
-                  record_vars: list = None, **kwargs):
+                  input_var: str, output_var: str, spike_var: str = 'spike', spike_def: str = 'v',
+                  train_params: list = None, record_vars: list = None, **kwargs):
 
         # extract keyword arguments for initialization
         dt = kwargs.pop('dt', 1e-3)
@@ -160,10 +160,10 @@ class SRNNLayer(RNNLayer):
                                                                **kwargs)
 
         # get variable indices
-        input_ext_idx, input_net_idx = cls._get_param_indices(template, [input_var_ext, input_var_net], keys)
+        input_ext_idx, input_net_idx = cls._get_param_indices(template, [input_var, spike_var], keys)
         if train_params:
             train_params = cls._get_param_indices(template, train_params, keys)
-        var_indices = cls._get_var_indices(template, output_var, spike_var=spike_var, recording_vars=record_vars)
+        var_indices = cls._get_var_indices(template, output_var, spike_var=spike_def, recording_vars=record_vars)
 
         if clear_template:
             clear(template)
@@ -171,8 +171,8 @@ class SRNNLayer(RNNLayer):
                    train_params=train_params, record_vars=var_indices, **kwargs_init)
 
     def forward(self, x):
-        spikes = self.y[self._var] >= self._thresh
-        self.args[self._inp_net] = spikes/self.dt
+        spikes = self.y[self._spike_def] >= self._thresh
+        self.args[self._spike_var] = spikes / self.dt
         self.args[self._inp_ext] = x
         y_old = self.y.detach()
         dy = self.func(0, y_old, *self.args)
@@ -181,4 +181,4 @@ class SRNNLayer(RNNLayer):
         return self.y[self.output]
 
     def spike_reset(self, spikes: torch.Tensor):
-        self.y[self._var[spikes]] = self._reset
+        self.y[self._spike_def[spikes]] = self._reset

@@ -43,7 +43,7 @@ class Network:
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
-                  input_var_ext: str, output_var: str, input_var_net: str = None, spike_var: str = None, op: str = None,
+                  input_var: str, output_var: str, spike_var: str = None, spike_def: str = None, op: str = None,
                   train_params: list = None, record_vars: list = None, **kwargs):
         """Creates a `Network` instance from a YAML template that defines a single RNN node and additional information
         about which nodes in the network should be connected to each other.
@@ -61,13 +61,13 @@ class Network:
             Source variable that will be used for each connection in the network.
         target_var
             Target variable that will be used for each connection in the network.
-        input_var_ext
+        input_var
             Name of the parameter in the node equations that input from input layers should be projected to.
         output_var
             Name of the variable in the node equations that should be used as output of the RNN layer.
-        input_var_net
-            Name of the parameter in the node equations that recurrent input from the RNN layer should be projected to.
         spike_var
+            Name of the parameter in the node equations that recurrent input from the RNN layer should be projected to.
+        spike_def
             Name of the variable in the node equations that should be used to determine spikes in the network.
         op
             Name of the operator in which all the above variables can be found. If not provided, it is assumed that
@@ -86,8 +86,8 @@ class Network:
         """
 
         # add operator key to variable names
-        var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var_ext, 'in_net': input_var_net,
-                    'out': output_var, 'spike': spike_var}
+        var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'in_net': spike_var,
+                    'out': output_var, 'spike': spike_def}
         new_vars = {}
         if op is not None:
             for key, var in var_dict.copy().items():
@@ -98,17 +98,17 @@ class Network:
                 record_vars = [add_op_name(op, v, new_vars) for v in record_vars]
 
         # initialize rnn layer
-        if input_var_net is None and spike_var is None:
+        if spike_var is None and spike_def is None:
             rnn_layer = RNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
                                            var_dict['out'], train_params=train_params, record_vars=record_vars,
                                            **kwargs)
-        elif input_var_net is None or spike_var is None:
+        elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
-                             'name of the variable that spikes should be stored in (`input_var_net`) as well as the '
-                             'name of the variable that is used to define spikes (`spike_var`).')
+                             'name of the variable that spikes should be stored in (`spike_def`) as well as the '
+                             'name of the variable that is used to define spikes (`spike_def`).')
         else:
             rnn_layer = SRNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
-                                            var_dict['in_net'], var_dict['out'], var_dict['spike'],
+                                            var_dict['out'], spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
                                             train_params=train_params, record_vars=record_vars, **kwargs)
 
         # initialize model

@@ -50,7 +50,7 @@ class RNNLayer(Module):
         self.y = y_old + self.dt * dy
         return self.y[self.output]
 
-    def record(self, variables: list):
+    def record(self, variables: list) -> Iterator:
         for v in variables:
             yield self.y[self._record_vars[v]]
 

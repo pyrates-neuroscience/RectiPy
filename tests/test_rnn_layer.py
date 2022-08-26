@@ -98,6 +98,7 @@ def test_3_2_detach():
             assert arg1.requires_grad
             assert not arg2.requires_grad
 
+
 def test_3_3_forward():
     """Tests forward function of the RNN layer.
     """
@@ -143,3 +144,75 @@ def test_3_3_forward():
         rnn2.forward(torch.randn(n+1))
         rnn3.forward(inp)
         rnn1.forward(np.random.randn(n))
+
+
+def test_record():
+    """Tests record method of RNNLayer.
+    """
+
+    # parameters
+    func = rate
+    n = 10
+    weights = np.random.randn(n, n)
+    args = (torch.zeros((n,)), torch.zeros((n,)), torch.tensor(weights), 1.0)
+
+    # create instances of RNNLayer
+    rnn1 = RNNLayer(func, args, 1, list(range(n)))
+    rnn2 = RNNLayer(func, args, 1, list(range(n)), record_vars={'r1': [0], 'r2': [2, 3]})
+    rnn3 = RNNLayer(func, args, 1, list(range(n)), record_vars={'r1': [n]})
+
+    # perform recordings
+    r1 = list(rnn2.record(['r1']))
+    r2 = list(rnn2.record(['r1', 'r2']))
+
+    # these tests should pass
+    assert r1
+    assert len(r2) - len(r1) == 1
+    assert r1[0][0].numpy() == args[0][0].numpy()
+    assert sum(r2[1].shape) == 2
+
+    # these tests should fail
+    with pytest.raises(KeyError):
+        rnn1.record(['r1'])
+        list(rnn2.record(['r3']))
+    with pytest.raises(IndexError):
+        rnn3.record(['r1'])
+        _ = r1[1]
+
+
+def test_reset():
+    """Tests reset method of RNNLayer
+    """
+
+    # parameters
+    func = rate
+    n = 10
+    weights = np.random.randn(n, n)
+    y0 = np.random.randn(n)
+    args = (torch.tensor(y0), torch.zeros((n,)), torch.tensor(weights), 1.0)
+    y1 = y0[:] + 1.0
+    x = torch.randn(n)
+
+    # create instance of RNNLayer
+    rnn = RNNLayer(func, args, 1, list(range(n)))
+
+    # collect states
+    r1 = rnn.forward(x)
+    r2 = rnn.forward(x)
+    rnn.reset(y0)
+    r3 = rnn.forward(x)
+    rnn.reset(y1)
+    r4 = rnn.forward(x)
+    rnn.reset(y0[0:3], idx=np.arange(0, 3))
+    r5 = rnn.forward(x)
+
+    # these tests should pass
+    for z1, z2 in [(r1, r2), (r1, r4), (r1, r5)]:
+        assert np.mean(np.abs(z1.detach().numpy() - z2.detach().numpy())) > 0
+    assert np.mean(r1.detach().numpy() - r3.detach().numpy()) == pytest.approx(0, abs=accuracy, rel=accuracy)
+    assert np.mean(r1.detach().numpy()[0:3] - r5.detach().numpy()[0:3]) == pytest.approx(0, abs=accuracy, rel=accuracy)
+
+    # these tests should fail
+    with pytest.raises(RuntimeError):
+        rnn.reset(np.random.randn(n+1))
+        rnn.reset(y0, idx=np.arange(0, n+1))

@@ -2,6 +2,10 @@
 
 ## 0.4
 
+### 0.4.1
+
+- added new pytests that test the functionalities of the `RNNLayer.record` and `RNNLayer.reset` methods
+
 ### 0.4.0
 
 - removed all in-place operations for non-spiking networks

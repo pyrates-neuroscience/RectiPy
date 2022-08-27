@@ -6,6 +6,7 @@
 
 - added new pytests that test the functionalities of the `RNNLayer.record` and `RNNLayer.reset` methods
 - added new pytests that test the initialization functions of `Network`
+- improved integration of PyRates into RectiPy, by making sure that all PyRates caches are cleared, even if building the network functions fails due to erroneous user inputs
 
 ### 0.4.0
 

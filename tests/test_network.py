@@ -7,6 +7,7 @@ from rectipy import Network
 import torch
 import pytest
 import numpy as np
+from pyrates import clear_frontend_caches
 
 
 # meta infos
@@ -36,6 +37,8 @@ accuracy = 1e-3
 def test_4_1_init():
     """Tests initialization of Network class.
     """
+
+    clear_frontend_caches()
 
     # parameters
     n = 10

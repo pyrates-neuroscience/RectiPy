@@ -6,6 +6,7 @@ from rectipy.rnn_layer import RNNLayer, SRNNLayer
 import torch
 import pytest
 import numpy as np
+from pyrates import clear_frontend_caches
 
 # meta infos
 __author__ = "Richard Gast"
@@ -39,6 +40,8 @@ def rate(t, y, I_ext, weights, tau):
 def test_3_1_rnn_init():
     """Tests initialization options of the rnn layer.
     """
+
+    clear_frontend_caches()
 
     # parameters
     func = rate
@@ -103,6 +106,8 @@ def test_3_2_detach():
 def test_3_3_forward():
     """Tests forward function of the RNN layer.
     """
+
+    clear_frontend_caches()
 
     # parameters
     func = rate

@@ -1,4 +1,4 @@
-from pyrates import NodeTemplate, CircuitTemplate, clear
+from pyrates import NodeTemplate, CircuitTemplate, clear, clear_frontend_caches
 import torch
 from torch.nn import Module
 from typing import Callable, Union, Iterator
@@ -29,8 +29,12 @@ class RNNLayer(Module):
         clear_template = kwargs.pop('clear', True)
 
         # generate rnn template and function
-        func, args, keys, template, state_var_indices = cls._circuit_from_yaml(node, weights, source_var, target_var,
-                                                                               step_size=dt, **kwargs)
+        try:
+            func, args, keys, template, state_var_indices = cls._circuit_from_yaml(node, weights, source_var,
+                                                                                   target_var, step_size=dt, **kwargs)
+        except Exception as e:
+            clear_frontend_caches()
+            raise e
 
         # get variable indices
         input_idx = cls._get_param_indices(template, [input_var], keys)[0]

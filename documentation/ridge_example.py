@@ -70,7 +70,7 @@ net = Network.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_sfa_pop"
 net.run(np.zeros((init_steps, 1)), verbose=False, sampling_steps=init_steps+1)
 
 # add input layer
-net.add_input_layer(N, m, weights=W_in, trainable=False)
+net.add_input_layer(m, weights=W_in, trainable=False)
 net.compile()
 
 coeffs = []
@@ -85,7 +85,7 @@ for j in range(train_epochs):
     coeffs.append(coeffs_tmp)
 
 # add output layers
-net.add_output_layer(N, k, trainable=False, weights=np.mean(coeffs, axis=0))
+net.add_output_layer(k, trainable=False, weights=np.mean(coeffs, axis=0))
 net.compile()
 
 # test performance on last epoch

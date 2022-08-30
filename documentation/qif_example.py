@@ -26,10 +26,11 @@ net = Network.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_sfa_pop"
                         clear=True)
 
 # add input and output layers
-net.add_input_layer(N, m, trainable=False)
+net.add_input_layer(m, trainable=False)
 
 # perform simulation
 obs = net.run(inp, record_output=False, record_vars=[('s', True)], sampling_steps=100)
+net.train()
 
 # plot results
 obs.plot('s')

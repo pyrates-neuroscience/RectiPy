@@ -3,6 +3,7 @@
 
 # imports
 from rectipy.rnn_layer import RNNLayer, SRNNLayer
+from rectipy.input_layer import LinearStatic, Linear
 from rectipy import Network
 import torch
 import pytest
@@ -57,7 +58,7 @@ def test_4_1_init():
     # different network initializations
     net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
                              target_var=t_var, clear=True, verbose=False)
-    net2 = Network(rnn)
+    net2 = Network(n, rnn)
     net3 = Network.from_yaml(node, weights=weights, input_var="I_ext", output_var=out_var, source_var=s_var,
                              target_var="r_in", clear=True, verbose=False, op="li_op")
     net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
@@ -94,7 +95,41 @@ def test_4_1_init():
 def test_4_2_input_layer():
     """Tests input layer properties of Network class.
     """
-    pass
+
+    # parameters
+    n = 10
+    weights = np.random.randn(n, n)
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    node_spiking = "neuron_model_templates.spiking_neurons.qif.qif_pop"
+    in_var = "li_op/I_ext"
+    out_var = "tanh_op/r"
+    s_var = "tanh_op/r"
+    t_var = "li_op/r_in"
+
+    # different network initializations
+    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net1")
+    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net2")
+    net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net3")
+    net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net4")
+
+    # add input layer
+    m = 3
+    net1.add_input_layer(m, trainable=False)
+    net2.add_input_layer(m, weights=np.random.randn(n, m), trainable=False)
+    net3.add_input_layer(m, trainable=True)
+    net4.add_input_layer(m, dtype=torch.float32)
+
+    # these tests should pass
+    assert isinstance(net1.input_layer.layer, LinearStatic)
+    assert isinstance(net3.input_layer.layer, Linear)
+    assert tuple(net2.input_layer.layer.weights.shape) == (n, m)
+    assert net4.input_layer.layer.weights.dtype == torch.float32
+
+    # these tests should fail
 
 
 def test_4_3_output_layer():

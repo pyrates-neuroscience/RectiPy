@@ -16,11 +16,13 @@ class Network:
     output layers.
     """
 
-    def __init__(self, rnn_layer: Union[RNNLayer, SRNNLayer], var_map: dict = None):
+    def __init__(self, n: int, rnn_layer: Union[RNNLayer, SRNNLayer], var_map: dict = None):
         """Instantiates network with a single RNN layer.
 
         Parameters
         ----------
+        n
+            Number of neurons in the RNN layer.
         rnn_layer
             `RNNLayer` instance.
         var_map
@@ -28,6 +30,7 @@ class Network:
             that contain the operator name as well.
         """
 
+        self.n = n
         self.rnn_layer = rnn_layer
         self.input_layer = None
         self.output_layer = None
@@ -112,7 +115,7 @@ class Network:
                                             train_params=train_params, record_vars=record_vars, **kwargs)
 
         # initialize model
-        return cls(rnn_layer, var_map=new_vars)
+        return cls(weights.shape[0], rnn_layer, var_map=new_vars)
 
     @property
     def model(self) -> Sequential:
@@ -121,14 +124,12 @@ class Network:
         """
         return self._model
 
-    def add_input_layer(self, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
+    def add_input_layer(self, m: int, weights: np.ndarray = None, trainable: bool = False,
                         dtype: torch.dtype = torch.float64) -> InputLayer:
         """Add an input layer to the network. Networks can have either 1 or 0 input layers.
 
         Parameters
         ----------
-        n
-            Number of neurons in the RNN layer.
         m
             Number of input dimensions.
         weights
@@ -146,7 +147,7 @@ class Network:
         """
 
         # initialize input layer
-        input_layer = InputLayer(n, m, weights, trainable=trainable, dtype=dtype)
+        input_layer = InputLayer(self.n, m, weights, trainable=trainable, dtype=dtype)
 
         # add layer to model
         self.input_layer = input_layer
@@ -154,14 +155,12 @@ class Network:
         # return layer
         return self.input_layer
 
-    def add_output_layer(self, n: int, k: int, weights: np.ndarray = None, trainable: bool = False,
+    def add_output_layer(self, k: int, weights: np.ndarray = None, trainable: bool = False,
                          activation_function: str = None, dtype: torch.dtype = torch.float64) -> OutputLayer:
         """Add an output layer to the network. Networks can have either 1 or 0 output layers.
 
         Parameters
         ----------
-        n
-            Number of neurons in the RNN layer.
         k
             Number of output dimensions.
         weights
@@ -181,7 +180,7 @@ class Network:
         """
 
         # initialize output layer
-        output_layer = OutputLayer(n, k, weights, trainable=trainable, activation_function=activation_function,
+        output_layer = OutputLayer(self.n, k, weights, trainable=trainable, activation_function=activation_function,
                                    dtype=dtype)
 
         # add layer to model

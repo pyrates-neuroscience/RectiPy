@@ -1,32 +1,17 @@
 import torch
 from torch.nn import Module, Linear, Tanh, Softmax, Softmin, Sigmoid, Identity, Sequential
 from typing import Iterator
-from .input_layer import LinearStatic
+from .input_layer import InputLayer
 import numpy as np
 
 
-class OutputLayer(Module):
+class OutputLayer(Sequential):
 
-    def __init__(self, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
+    def __new__(cls, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
                  activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs):
 
-        super().__init__()
-
-        # initialize output weights
-        if trainable:
-            layer = Linear(n, m, dtype=dtype, **kwargs)
-        else:
-            if weights is None:
-                weights = torch.randn(m, n, dtype=dtype)
-            else:
-                if weights.shape[0] == n and weights.shape[1] == m:
-                    weights = weights.T
-                elif weights.shape[0] != m or weights.shape[1] != n:
-                    raise ValueError(
-                        "Shape of the provided weights does not match the input and output dimensions of the"
-                        "output layer.")
-                weights = torch.tensor(weights, dtype=dtype)
-            layer = LinearStatic(weights)
+        # initialize linear layer with weights
+        layer = InputLayer(m, n, weights=weights, trainable=trainable, dtype=dtype, bias=kwargs.pop('bias', True))
 
         # define output function
         if activation_function is None:
@@ -44,10 +29,8 @@ class OutputLayer(Module):
                              f"option. See the docstring for `Network.add_output_layer` for valid options.")
 
         # define output layer
-        self.layer = Sequential(layer, activation_function)
+        return cls._init_sequential(layer, activation_function)
 
-    def forward(self, x):
-        return self.layer(x)
-
-    def parameters(self, recurse: bool = True) -> Iterator:
-        return self.layer.parameters(recurse=recurse)
+    @staticmethod
+    def _init_sequential(layer: InputLayer, func: Module):
+        return Sequential(layer, func)

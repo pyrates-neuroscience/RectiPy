@@ -40,7 +40,7 @@ class Network:
     def __getitem__(self, item: int):
         try:
             return self._model[item]
-        except AttributeError:
+        except TypeError:
             self.compile()
         return self._model[item]
 
@@ -606,6 +606,4 @@ class Network:
     def _get_layer(layer) -> tuple:
         if layer is None:
             return tuple()
-        if hasattr(layer, 'layer'):
-            return tuple([layer.layer])
         return tuple([layer])

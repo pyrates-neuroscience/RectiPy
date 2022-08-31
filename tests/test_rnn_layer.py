@@ -57,7 +57,7 @@ def test_3_1_rnn_init():
     rnn3 = SRNNLayer.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_pop", weights=weights,
                                source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
                                output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
-                               spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False)
+                               spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
     rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                               output_var="tanh_op/r", clear=True, train_params=["weight"], record_vars=["li_op/u"],
@@ -71,6 +71,8 @@ def test_3_1_rnn_init():
     assert len(rnn3.y) == 2*n
     assert len(list(rnn4.parameters())) - len(list(rnn2.parameters())) == 1
     assert list(rnn4.record(['li_op/u']))[0].shape[0] == n
+    assert rnn3.y.dtype == torch.float32
+    assert rnn4.y.dtype == torch.float64
 
     # these tests should fail
     with pytest.raises(KeyError):
@@ -122,7 +124,7 @@ def test_3_3_forward():
     rnn1 = RNNLayer(func, args, input_var=inp_idx, output=list(range(n)))
     rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, float_precision="float64", verbose=False)
+                              output_var="tanh_op/r", clear=True, verbose=False)
     rnn3 = RNNLayer(func, args + (1.0, ), input_var=inp_idx, output=list(range(n)))
     rnn4 = RNNLayer(func, args, input_var=inp_idx + 2, output=list(range(n)))
     rnn5 = RNNLayer(func, args, input_var=inp_idx, output=[0, 1, 2])

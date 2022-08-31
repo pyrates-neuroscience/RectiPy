@@ -45,7 +45,7 @@ def test_1_1_linear_static():
 
     # these tests should pass
     assert isinstance(inp, LinearStatic)
-    assert inp.weights.shape == weights.shape
+    assert inp.weight.shape == weights.shape
     assert torch.sum(inp.forward(x)-weights @ x).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
 
     # these tests should fail
@@ -68,24 +68,23 @@ def test_1_2_input_layer():
     # create different instances of the input layer
     in1 = InputLayer(n, m)
     in2 = InputLayer(m, n)
-    in3 = InputLayer(n, m, weights=weights)
+    in3 = InputLayer(n, m, weights=weights.T)
     in4 = InputLayer(n, m, weights=weights, dtype=torch.float32)
     in5 = InputLayer(n, m, weights=weights, trainable=True)
 
     # these tests should pass
-    assert isinstance(in1, InputLayer)
-    assert isinstance(in1.layer, LinearStatic)
-    assert isinstance(in5.layer, Linear)
-    assert in1.layer.weights.shape[0] == in2.layer.weights.shape[1]
-    assert torch.sum(in3.layer.weights - weights).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
-    assert in3.layer.weights.dtype == torch.float64
-    assert in4.layer.weights.dtype == torch.float32
+    assert isinstance(in1, LinearStatic)
+    assert isinstance(in5, Linear)
+    assert in1.weight.shape[0] == in2.weight.shape[1]
+    assert torch.sum(in3.weight - weights).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
+    assert in3.weight.dtype == torch.float64
+    assert in4.weight.dtype == torch.float32
     assert np.abs(torch.sum(in5.forward(x) - in3.forward(x)).detach().numpy()) > 0.0
     assert len(list(in5.parameters())) - len(list(in4.parameters())) == 1
 
     # these tests should fail
     with pytest.raises(ValueError):
-        InputLayer(n, m, weights=weights.T)
+        InputLayer(n, m, weights=np.random.randn(n+1, m+1))
     with pytest.raises(RuntimeError):
         in4.forward(x)
         in5.forward(torch.randn(n))

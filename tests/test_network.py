@@ -66,17 +66,20 @@ def test_4_1_init():
                              record_vars=["li_op/u"])
     net5 = Network.from_yaml(node_spiking, weights=weights, input_var="I_ext", output_var="s", source_var="s",
                              target_var="s_in", op="qif_op", spike_var="spike", spike_def="v",  clear=True,
-                             verbose=False)
+                             verbose=False, dtype=torch.float32)
 
     # these tests should pass
     assert isinstance(net1.rnn_layer, RNNLayer)
     assert isinstance(net5.rnn_layer, SRNNLayer)
+    assert isinstance(net1[0], RNNLayer)
     assert net2.rnn_layer == rnn
     assert len(net1._var_map) == 0
     assert len(net3._var_map) == 2
     assert len(net1.rnn_layer.train_params) == 0
     assert len(net4.rnn_layer.train_params) == 1
     assert list(net4.rnn_layer.record(["li_op/u"]))
+    assert net1.rnn_layer.y.dtype == torch.float64
+    assert net5.rnn_layer.y.dtype == torch.float32
 
     # these tests should fail
     with pytest.raises(FileNotFoundError):
@@ -96,7 +99,7 @@ def test_4_2_input_layer():
     """Tests input layer properties of Network class.
     """
 
-    # parameters
+    # rnn parameters
     n = 10
     weights = np.random.randn(n, n)
     node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
@@ -106,30 +109,48 @@ def test_4_2_input_layer():
     s_var = "tanh_op/r"
     t_var = "li_op/r_in"
 
+     # input parameters
+    m = 3
+    x = torch.randn(m, dtype=torch.float32)
+
     # different network initializations
     net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net1")
+                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float32)
     net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net2")
+                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float32)
     net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net3")
+                             target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float32)
     net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net4")
+                             target_var=t_var, clear=True, verbose=False, file_name="net4", dtype=torch.float32)
 
     # add input layer
-    m = 3
-    net1.add_input_layer(m, trainable=False)
-    net2.add_input_layer(m, weights=np.random.randn(n, m), trainable=False)
-    net3.add_input_layer(m, trainable=True)
-    net4.add_input_layer(m, dtype=torch.float32)
+    net1.add_input_layer(m, trainable=False, dtype=torch.float32)
+    net2.add_input_layer(m, weights=np.random.randn(m, n), trainable=False, dtype=torch.float32)
+    net3.add_input_layer(m, trainable=True, dtype=torch.float32)
+    net4.add_input_layer(m, dtype=torch.float64)
+    net1.compile()
+    net2.compile()
+    net3.compile()
+    net4.compile()
 
     # these tests should pass
-    assert isinstance(net1.input_layer.layer, LinearStatic)
-    assert isinstance(net3.input_layer.layer, Linear)
-    assert tuple(net2.input_layer.layer.weights.shape) == (n, m)
-    assert net4.input_layer.layer.weights.dtype == torch.float32
+    assert isinstance(net1.input_layer, LinearStatic)
+    assert isinstance(net3.input_layer, Linear)
+    assert isinstance(net1[0], LinearStatic)
+    assert tuple(net2.input_layer.weight.shape) == (n, m)
+    assert net4.input_layer.weight.dtype == torch.float64
+    assert tuple(net1.forward(x).shape) == (n,)
+    net1.remove_input_layer()
+    net1.compile()
+    assert isinstance(net1[0], RNNLayer)
 
     # these tests should fail
+    with pytest.raises(RuntimeError):
+        net4.forward(x)
+        net1.forward(x)
+        net2.forward(torch.randn(m+1))
+    with pytest.raises(ValueError):
+        net1.add_input_layer(m, weights=np.random.randn(m+1, n+1))
 
 
 def test_4_3_output_layer():

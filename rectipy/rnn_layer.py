@@ -27,11 +27,13 @@ class RNNLayer(Module):
         # extract keyword arguments for initialization
         dt = kwargs.pop('dt', 1e-3)
         clear_template = kwargs.pop('clear', True)
+        dtype = kwargs.pop('dtype', torch.float64)
+        kwargs['float_precision'] = str(dtype).split('.')[-1]
 
         # generate rnn template and function
         try:
-            func, args, keys, template, state_var_indices = cls._circuit_from_yaml(node, weights, source_var,
-                                                                                   target_var, step_size=dt, **kwargs)
+            func, args, keys, template, state_var_indices = \
+                cls._circuit_from_yaml(node, weights, source_var, target_var, step_size=dt, **kwargs)
         except Exception as e:
             clear_frontend_caches()
             raise e
@@ -45,7 +47,7 @@ class RNNLayer(Module):
         if clear_template:
             clear(template)
         return cls(func, args, input_idx, var_indices.pop('out'), dt=dt, train_params=train_params,
-                   record_vars=var_indices)
+                   record_vars=var_indices, dtype=dtype)
 
     def forward(self, x):
         self.args[self._inp_ext] = x
@@ -154,9 +156,10 @@ class SRNNLayer(RNNLayer):
         # extract keyword arguments for initialization
         dt = kwargs.pop('dt', 1e-3)
         kwargs_init = {}
-        for key in ['spike_threshold', 'spike_reset']:
+        for key in ['spike_threshold', 'spike_reset', 'dtype']:
             if key in kwargs:
                 kwargs_init[key] = kwargs.pop(key)
+        kwargs['float_precision'] = str(kwargs_init['dtype']).split('.')[-1]
         clear_template = kwargs.pop('clear', True)
 
         # generate rnn template and function

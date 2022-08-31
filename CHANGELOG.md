@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5
+
+### 0.5.0
+
+- reduced overhead of `InputLayer` and `OutputLayer` by making them return instances of `torch.nn.Linear` or `rectipy.input_layer.LinearStatic` upon initialization
+- reduced overhead of `Network.compile` by directly accessing the `torch.Module` instances to create the `torch.Sequential`
+- improved test library with more extensive testing of `RNNLayer` and `Network` functionalities
+
 ## 0.4
 
 ### 0.4.1

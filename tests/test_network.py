@@ -233,7 +233,7 @@ def test_4_4_compile():
 
     # input parameters
     m = 3
-    x = torch.randn(m, dtype=torch.float32)
+    x = torch.randn(m, dtype=torch.float64)
 
     # network initialization
     net = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
@@ -243,17 +243,15 @@ def test_4_4_compile():
     net.compile()
     assert isinstance(net.model, torch.nn.Sequential)
     assert len(net) == 1
-    y1 = net.forward(torch.randn(n))
-    net.add_input_layer(m)
+    net.add_input_layer(m, dtype=torch.float64)
+    net.compile()
+    assert len(net) == 2
+    y1 = net.forward(x)
+    net.add_output_layer(k, dtype=torch.float64)
     net.compile()
     y2 = net.forward(x)
-    assert len(net) == 2
-    assert y1.shape[0] - y2.shape[0] == n-m
-    net.add_output_layer(k)
-    net.compile()
-    y3 = net.forward(x)
     assert len(net) == 3
-    assert y3.shape[0] - y2.shape[0] == k-m
+    assert y2.shape[0] - y1.shape[0] == k-n
 
 
 def test_4_5_forward():

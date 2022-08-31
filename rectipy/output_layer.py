@@ -1,6 +1,5 @@
 import torch
-from torch.nn import Module, Linear, Tanh, Softmax, Softmin, Sigmoid, Identity, Sequential
-from typing import Iterator
+from torch.nn import Module, Tanh, Softmax, Softmin, Sigmoid, Identity, Sequential
 from .input_layer import InputLayer
 import numpy as np
 
@@ -8,7 +7,7 @@ import numpy as np
 class OutputLayer(Sequential):
 
     def __new__(cls, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
-                 activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs):
+                activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs):
 
         # initialize linear layer with weights
         layer = InputLayer(m, n, weights=weights, trainable=trainable, dtype=dtype, bias=kwargs.pop('bias', True))

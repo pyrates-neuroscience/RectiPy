@@ -103,13 +103,12 @@ def test_4_2_input_layer():
     n = 10
     weights = np.random.randn(n, n)
     node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
-    node_spiking = "neuron_model_templates.spiking_neurons.qif.qif_pop"
     in_var = "li_op/I_ext"
     out_var = "tanh_op/r"
     s_var = "tanh_op/r"
     t_var = "li_op/r_in"
 
-     # input parameters
+    # input parameters
     m = 3
     x = torch.randn(m, dtype=torch.float32)
 
@@ -156,7 +155,64 @@ def test_4_2_input_layer():
 def test_4_3_output_layer():
     """Tests output layer properties of Network class.
     """
-    pass
+
+    # rnn parameters
+    n = 10
+    weights = np.random.randn(n, n)
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    in_var = "li_op/I_ext"
+    out_var = "tanh_op/r"
+    s_var = "tanh_op/r"
+    t_var = "li_op/r_in"
+
+    # output parameters
+    k = 3
+    out_weights = np.random.randn(n, k)
+
+    # input definition
+    x = torch.randn(n, dtype=torch.float64)
+
+    # different network initializations
+    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64)
+    net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float64)
+    net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net4", dtype=torch.float64)
+    net5 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net5", dtype=torch.float32)
+
+    # add output layers
+    net1.add_output_layer(k, weights=out_weights)
+    net2.add_output_layer(k, weights=out_weights, activation_function='sigmoid')
+    net3.add_output_layer(k, trainable=True)
+    net4.add_output_layer(k, trainable=True, bias=False)
+    net5.add_output_layer(k, dtype=torch.float32)
+    net1.compile()
+    net2.compile()
+    net5.compile()
+
+    # these tests should pass
+    assert isinstance(net1.output_layer, torch.nn.Sequential)
+    assert isinstance(net1.output_layer[0], LinearStatic)
+    assert isinstance(net3.output_layer[0], Linear)
+    assert isinstance(net1.output_layer[1], torch.nn.Identity)
+    assert isinstance(net2.output_layer[1], torch.nn.Sigmoid)
+    assert len(list(net1.parameters())) == 0
+    assert len(list(net3.parameters())) == 2
+    assert len(list(net4.parameters())) == 1
+    assert net5.output_layer[0].weight.dtype == torch.float32
+    assert tuple(net1.forward(x).shape) == (k,)
+    assert np.mean(np.abs(net1.forward(x).detach().numpy() - net2.forward(x).detach().numpy())) > 0.0
+    net1.remove_output_layer()
+    net1.compile()
+    assert tuple(net1.forward(x).shape) == (n,)
+
+    # these tests should fail
+    with pytest.raises(RuntimeError):
+        net5.forward(x)
 
 
 def test_4_4_compile():

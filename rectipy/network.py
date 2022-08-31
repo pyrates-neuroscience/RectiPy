@@ -156,7 +156,7 @@ class Network:
         return self.input_layer
 
     def add_output_layer(self, k: int, weights: np.ndarray = None, trainable: bool = False,
-                         activation_function: str = None, dtype: torch.dtype = torch.float64) -> OutputLayer:
+                         activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs) -> OutputLayer:
         """Add an output layer to the network. Networks can have either 1 or 0 output layers.
 
         Parameters
@@ -172,6 +172,8 @@ class Network:
             Optional activation function applied to the output of the output layer.
         dtype
             Data type of the input weights.
+        kwargs
+            Additional keyword arguments to be passed on to `rectipy.output_layer.OutputLayer`.
 
         Returns
         -------
@@ -181,7 +183,7 @@ class Network:
 
         # initialize output layer
         output_layer = OutputLayer(self.n, k, weights, trainable=trainable, activation_function=activation_function,
-                                   dtype=dtype)
+                                   dtype=dtype, **kwargs)
 
         # add layer to model
         self.output_layer = output_layer

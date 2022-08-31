@@ -218,7 +218,42 @@ def test_4_3_output_layer():
 def test_4_4_compile():
     """Tests compile functionalities of Network class.
     """
-    pass
+
+    # rnn parameters
+    n = 10
+    weights = np.random.randn(n, n)
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    in_var = "li_op/I_ext"
+    out_var = "tanh_op/r"
+    s_var = "tanh_op/r"
+    t_var = "li_op/r_in"
+
+    # output parameters
+    k = 3
+
+    # input parameters
+    m = 3
+    x = torch.randn(m, dtype=torch.float32)
+
+    # network initialization
+    net = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                            target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+
+    # these tests should pass
+    net.compile()
+    assert isinstance(net.model, torch.nn.Sequential)
+    assert len(net) == 1
+    y1 = net.forward(torch.randn(n))
+    net.add_input_layer(m)
+    net.compile()
+    y2 = net.forward(x)
+    assert len(net) == 2
+    assert y1.shape[0] - y2.shape[0] == n-m
+    net.add_output_layer(k)
+    net.compile()
+    y3 = net.forward(x)
+    assert len(net) == 3
+    assert y3.shape[0] - y2.shape[0] == k-m
 
 
 def test_4_5_forward():

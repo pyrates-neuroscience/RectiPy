@@ -44,6 +44,13 @@ class Network:
             self.compile()
         return self._model[item]
 
+    def __len__(self):
+        try:
+            return len(self._model)
+        except TypeError:
+            self.compile()
+            return len(self._model)
+
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
                   input_var: str, output_var: str, spike_var: str = None, spike_def: str = None, op: str = None,

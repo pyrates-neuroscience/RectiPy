@@ -10,26 +10,26 @@ import torch
 # model parameters
 node = "model_templates.base_templates.tanh_node"
 N = 5
-C = np.load("C.npy")  #np.random.uniform(low=-1.0, high=1.0, size=(N, N))
-D =  np.load("D.npy")  #np.random.choice([1.0, 2.0, 3.0], size=(N, N))
+J = np.load("C.npy")  #np.random.uniform(low=-1.0, high=1.0, size=(N, N))
+D = np.load("D.npy")  #np.random.choice([1.0, 2.0, 3.0], size=(N, N))
 #np.save("C.npy", C)
 #np.save("D.npy", D)
 S = D*0.3
-J0 = np.random.uniform(0.1, 10.0)
+k0 = np.random.uniform(0.1, 10.0)
 tau0 = np.random.uniform(0.1, 10.0)
 u_idx = np.arange(0, N)
 
 # initialize networks
-target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=C,
+target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=J,
                                edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
                                input_var="li_op/I_ext", output_var="li_op/u", clear=True, float_precision="float64",
                                file_name='target_net', node_vars={'all/li_op/u': np.random.randn(N)})
 
-learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=C,
+learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=J,
                                  edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
                                  input_var="li_op/I_ext", output_var="li_op/u", clear=False,
-                                 train_params=['li_op/J', 'li_op/tau'], float_precision="float64",
-                                 node_vars={"all/li_op/J": J0, "all/li_op/tau": tau0},
+                                 train_params=['li_op/k', 'li_op/tau'], float_precision="float64",
+                                 node_vars={"all/li_op/k": k0, "all/li_op/tau": tau0},
                                  file_name='learning_net')
 
 # compile networks
@@ -135,9 +135,9 @@ ax3.set_xlabel('epochs')
 ax3.set_ylabel('MSE')
 plt.tight_layout()
 
-for key, target, val, start in zip(["J", "tau"], [target_net.rnn_layer.args[1].numpy(), target_net.rnn_layer.args[0].numpy()],
+for key, target, val, start in zip(["k", "tau"], [target_net.rnn_layer.args[1].numpy(), target_net.rnn_layer.args[0].numpy()],
                                    [learning_net.rnn_layer.args[1].detach().numpy(), learning_net.rnn_layer.args[0].detach().numpy()],
-                                   [J0, tau0]):
+                                   [k0, tau0]):
     print(f"Parameter: {key}. Target: {target}. Fitted value: {val}. Initial value: {start}.")
 
 plt.show()

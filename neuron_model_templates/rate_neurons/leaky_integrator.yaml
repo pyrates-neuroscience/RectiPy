@@ -7,11 +7,11 @@
 # leaky integrator operator
 li_op:
   base: OperatorTemplate
-  equations: "u' = -u/tau + J*r_in + I_ext"
+  equations: "u' = -u/tau + k*r_in + I_ext"
   variables:
     u: output(0.0)
     tau: 1.0
-    J: 2.0
+    k: 2.0
     r_in: input(0.0)
     I_ext: input(0.0)
 

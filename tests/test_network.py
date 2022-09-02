@@ -253,27 +253,105 @@ def test_4_4_compile():
     assert len(net) == 3
     assert y2.shape[0] - y1.shape[0] == k-n
 
+    # these tests should fail
+    net.remove_input_layer()
+    net.compile()
+    with pytest.raises(RuntimeError):
+        net.forward(x)
 
-def test_4_5_forward():
-    """Tests forward method of Network class.
-    """
-    pass
 
-
-def test_4_6_parameters():
+def test_4_5_parameters():
     """Tests parameters method of Network class.
     """
-    pass
+
+    # parameters
+    n = 10
+    k = 3
+    m = 2
+    weights = np.random.randn(n, n)
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    in_var = "li_op/I_ext"
+    out_var = "tanh_op/r"
+    s_var = "tanh_op/r"
+    t_var = "li_op/r_in"
+
+    # network initialization
+    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
+                             train_params=['weight', 'li_op/tau'])
+
+    # test number of parameters
+    assert len(list(net1.parameters())) == 0
+    assert len(list(net2.parameters())) == 2
+
+    # add input layers
+    net1.add_input_layer(m, trainable=True)
+    net2.add_input_layer(m, trainable=False)
+    net1.compile()
+    net2.compile()
+
+    # test number of parameters
+    assert len(list(net1.parameters())) == 1
+    assert len(list(net2.parameters())) == 2
+
+    # add output layers
+    net1.add_output_layer(k, trainable=True, bias=False)
+    net2.add_output_layer(k, trainable=True, bias=True)
+    net1.compile()
+    net2.compile()
+
+    # test number of parameters
+    assert len(list(net1.parameters())) == 2
+    assert len(list(net2.parameters())) == 4
 
 
-def test_4_7_simulation():
+def test_4_6_simulation():
     """Tests simulation functionalities of Network class.
     """
 
-    pass
+    # rnn parameters
+    n = 10
+    steps = 100
+    weights = np.random.randn(n, n)
+    x = torch.randn(steps, n, dtype=torch.float64)
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    in_var = "li_op/I_ext"
+    out_var = "tanh_op/r"
+    s_var = "tanh_op/r"
+    t_var = "li_op/r_in"
+
+    # network initialization
+    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
+                             record_vars=['li_op/u'])
+    net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
+                             record_vars=['li_op/u']
+                             )
+    net3.compile()
+
+    # run simulations
+    res1 = net1.run(inputs=x, sampling_steps=2, verbose=False)
+    res2 = net2.run(inputs=x, record_output=False, record_vars=[('li_op/u', False)], verbose=False)
+    res3, res4 = [], []
+    for step in range(steps):
+        out = net3.forward(x[step, :])
+        if step % 2 == 0:
+            res3.append(out.detach().numpy())
+        res4.append(list(net3.rnn_layer.record(['li_op/u']))[0].detach().numpy())
+
+    # these tests should pass
+    for r1, r2 in zip(res1['out'], res3):
+        assert np.mean(np.abs(r1 - r2)) == pytest.approx(0, rel=accuracy, abs=accuracy)
+    for r1, r2 in zip(res2['li_op/u'], res4):
+        assert np.mean(np.abs(r1 - r2)) == pytest.approx(0, rel=accuracy, abs=accuracy)
 
 
-def test_4_8_optimization():
+def test_4_7_optimization():
     """Tests optimization functions of Network class.
     """
 

@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/rectipy.svg?style=plastic)](https://badge.fury.io/py/rectipy)
 [![PyPI version](https://badge.fury.io/py/rectipy.svg)](https://badge.fury.io/py/rectipy)
 [![CircleCI](https://circleci.com/gh/pyrates-neuroscience/RectiPy.svg?style=svg)](https://circleci.com/gh/pyrates-neuroscience/RectiPy)
+[![DOI](https://zenodo.org/badge/523464500.svg)](https://zenodo.org/badge/latestdoi/523464500)
 
 <img src="./RectiPy_logo_color.png" width="20%" heigth="20%" align="right">
 

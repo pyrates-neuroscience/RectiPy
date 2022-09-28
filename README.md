@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/rectipy.svg?style=plastic)](https://badge.fury.io/py/rectipy)
 [![PyPI version](https://badge.fury.io/py/rectipy.svg)](https://badge.fury.io/py/rectipy)
 [![CircleCI](https://circleci.com/gh/pyrates-neuroscience/RectiPy.svg?style=svg)](https://circleci.com/gh/pyrates-neuroscience/RectiPy)
+[![Documentation Status](https://readthedocs.org/projects/rectipy/badge/?version=latest)](https://rectipy.readthedocs.io/en/latest/?badge=latest)
 [![DOI](https://zenodo.org/badge/523464500.svg)](https://zenodo.org/badge/latestdoi/523464500)
 
 <img src="./RectiPy_logo_color.png" width="20%" heigth="20%" align="right">
@@ -16,7 +17,6 @@ to translate these model definitions into `PyTorch` functions.
 This way, users can easily define their own neuron models, spike-based or rate-based, and use them to create a RNN model.
 All model training, testing, as well as numerical integration of the differential equations is also performed in `PyTorch`.
 Thus, `RectiPy` comes with all the gradient-based optimization and parallelization features that `PyTorch` provides.
-
 
 ## Basic Features
 
@@ -39,7 +39,7 @@ Thus, `RectiPy` comes with all the gradient-based optimization and parallelizati
 
 ## Installation
 
-# Stable release (PyPi)
+### Stable release (PyPi)
 
 You can install the most recent stable version of `RectiPy` via the `pip` command. 
 To this end, execute the following command via the terminal within the Python environment you would like to install `RectiPy` in:
@@ -49,7 +49,7 @@ pip install rectipy
 ```
 This will also install the dependencies of the software listed below.
 
-# Development version (github)
+### Development version (github)
 
 To install the most recent development version of `RectiPy` as available on the master branch, clone this repository and run the 
 following line from the directory in which the repository was cloned:
@@ -63,6 +63,10 @@ Again, this will also install the dependencies of the software listed below.
 - pyrates
 - numpy
 - matplotlib
+
+## Documentation
+
+You can find a detailed documentation and various use examples at our `readthedocs <https://rectipy.readthedocs.io/en/latest/>`_ website.
 
 ## Contact
 

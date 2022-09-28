@@ -66,7 +66,7 @@ Again, this will also install the dependencies of the software listed below.
 
 ## Documentation
 
-You can find a detailed documentation and various use examples at our `readthedocs <https://rectipy.readthedocs.io/en/latest/>`_ website.
+You can find a detailed documentation and various use examples at our [readthedocs](https://rectipy.readthedocs.io/en/latest/) website.
 
 ## Contact
 

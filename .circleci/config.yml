@@ -12,28 +12,28 @@ jobs:
       - checkout
       - run: pip install --upgrade pip
       - run: pip install .[tests]
-      - run: pytest tests/
+      - run: pytest rectipy_tests/
   p37:
     docker:
       - image: cimg/python:3.7.12
     steps:
       - checkout
       - run: pip install .[tests]
-      - run: pytest tests/
+      - run: pytest rectipy_tests/
   p38:
     docker:
       - image: cimg/python:3.8.12
     steps:
       - checkout
       - run: pip install .[tests]
-      - run: pytest tests/
+      - run: pytest rectipy_tests/
   p39:
     docker:
       - image: cimg/python:3.9.10
     steps:
       - checkout
       - run: pip install .[tests]
-      - run: pytest tests/
+      - run: pytest rectipy_tests/
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows

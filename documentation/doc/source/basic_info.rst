@@ -24,9 +24,10 @@ Basic features of RectiPy
 Reference
 ---------
 
-If you use PyRates, please cite:
+If you use `RectiPY`, please cite the most recent release:
 
-`Gast, R., Rose, D., Salomon, C., Möller, H. E., Weiskopf, N., & Knösche, T. R. (2019). PyRates-A Python framework for rate-based neural simulations. PloS one, 14(12), e0225900. <https://doi.org/10.1371/journal.pone.0225900>`_
+.. image:: https://zenodo.org/badge/523464500.svg
+   :target: https://zenodo.org/badge/latestdoi/523464500
 
 Contact
 -------

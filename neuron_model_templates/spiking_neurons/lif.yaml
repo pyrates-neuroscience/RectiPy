@@ -1,0 +1,30 @@
+%YAML 1.2
+---
+
+aliases:
+  - &li_op neuron_model_templates.rate_neurons.leaky_integrator.li_op
+
+# operator templates
+####################
+
+lif_op:
+  base: *li_op
+  equations:
+    replace:
+      k*r_in: k*s_in
+    add:
+      - "s = -s/tau_s + spike"
+  variables:
+    s: output(0.0)
+    u: variable
+    tau_s: 0.5
+    s_in: input(0.0)
+    spike: input(0.0)
+
+# node templates
+################
+
+lif:
+  base: NodeTemplate
+  operators:
+    - lif_op

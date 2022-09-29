@@ -38,14 +38,14 @@ tanh_op:
 ################
 
 # node with a sigmoid transformation operator
-sigmoid_pop:
+sigmoid:
   base: NodeTemplate
   operators:
     - li_op
     - sigmoid_op
 
 # node with a sigmoid transformation operator
-tanh_pop:
+tanh:
   base: NodeTemplate
   operators:
     - li_op

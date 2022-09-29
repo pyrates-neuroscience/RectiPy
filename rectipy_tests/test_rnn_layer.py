@@ -51,14 +51,14 @@ def test_3_1_rnn_init():
 
     # create different instances of RNNLayer
     rnn1 = RNNLayer(func, args, 1, list(range(n)))
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
+    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                               output_var="tanh_op/r", clear=True, verbose=False)
-    rnn3 = SRNNLayer.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_pop", weights=weights,
+    rnn3 = SRNNLayer.from_yaml("neuron_model_templates.spiking_neurons.qif.qif", weights=weights,
                                source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
                                output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
                                spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
-    rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
+    rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                               output_var="tanh_op/r", clear=True, train_params=["weight"], record_vars=["li_op/u"],
                               verbose=False)
@@ -122,7 +122,7 @@ def test_3_3_forward():
 
     # create different instances of RNNLayer
     rnn1 = RNNLayer(func, args, input_var=inp_idx, output=list(range(n)))
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop", weights=weights,
+    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                               output_var="tanh_op/r", clear=True, verbose=False)
     rnn3 = RNNLayer(func, args + (1.0, ), input_var=inp_idx, output=list(range(n)))

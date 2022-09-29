@@ -44,8 +44,8 @@ def test_4_1_init():
     # parameters
     n = 10
     weights = np.random.randn(n, n)
-    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
-    node_spiking = "neuron_model_templates.spiking_neurons.qif.qif_pop"
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
+    node_spiking = "neuron_model_templates.spiking_neurons.qif.qif"
     in_var = "li_op/I_ext"
     out_var = "tanh_op/r"
     s_var = "tanh_op/r"
@@ -83,11 +83,11 @@ def test_4_1_init():
 
     # these tests should fail
     with pytest.raises(FileNotFoundError):
-        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.freaky_integrator.tanh_pop", weights=weights,
+        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.freaky_integrator.tanh", weights=weights,
                            source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
                            verbose=False)
     with pytest.raises(AttributeError):
-        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tan_pop", weights=weights,
+        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tan", weights=weights,
                            source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
                            verbose=False)
     with pytest.raises(KeyError):
@@ -102,7 +102,7 @@ def test_4_2_input_layer():
     # rnn parameters
     n = 10
     weights = np.random.randn(n, n)
-    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
     in_var = "li_op/I_ext"
     out_var = "tanh_op/r"
     s_var = "tanh_op/r"
@@ -159,7 +159,7 @@ def test_4_3_output_layer():
     # rnn parameters
     n = 10
     weights = np.random.randn(n, n)
-    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
     in_var = "li_op/I_ext"
     out_var = "tanh_op/r"
     s_var = "tanh_op/r"
@@ -222,7 +222,7 @@ def test_4_4_compile():
     # rnn parameters
     n = 10
     weights = np.random.randn(n, n)
-    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
     in_var = "li_op/I_ext"
     out_var = "tanh_op/r"
     s_var = "tanh_op/r"
@@ -269,7 +269,7 @@ def test_4_5_parameters():
     k = 3
     m = 2
     weights = np.random.randn(n, n)
-    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
     in_var = "li_op/I_ext"
     out_var = "tanh_op/r"
     s_var = "tanh_op/r"
@@ -316,7 +316,7 @@ def test_4_6_simulation():
     steps = 100
     weights = np.random.randn(n, n)
     x = torch.randn(steps, n, dtype=torch.float64)
-    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
     in_var = "li_op/I_ext"
     out_var = "tanh_op/r"
     s_var = "tanh_op/r"

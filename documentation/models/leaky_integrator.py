@@ -35,7 +35,7 @@ from rectipy import Network
 import numpy as np
 
 # define network parameters
-node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
 N = 5
 J = np.random.randn(N, N)*2.0
 
@@ -84,7 +84,7 @@ show()
 # function that represents a non-linear mapping of :math:`u_i` to the open interval :math:`(0, 1)`.
 
 # initialize network
-node = "neuron_model_templates.rate_neurons.leaky_integrator.sigmoid_pop"
+node = "neuron_model_templates.rate_neurons.leaky_integrator.sigmoid"
 net = Network.from_yaml(node, weights=J, source_var="sigmoid_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                         output_var="li_op/u", dt=1e-3)
 

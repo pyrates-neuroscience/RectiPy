@@ -61,7 +61,7 @@ from rectipy import Network
 import numpy as np
 
 # define network parameters
-node = "neuron_model_templates.spiking_neurons.qif.qif_pop"
+node = "neuron_model_templates.spiking_neurons.qif.qif"
 N = 5
 J = np.random.randn(N, N)*2.0
 
@@ -125,7 +125,7 @@ show()
 # Here, we will show how they affect the RNN dynamics in a small QIF network.
 
 # initialize network
-node = "neuron_model_templates.spiking_neurons.qif.qif_sfa_pop"
+node = "neuron_model_templates.spiking_neurons.qif.qif_sfa"
 net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
                         op="qif_sfa_op", dt=1e-3, spike_def="v", spike_var="spike")
 

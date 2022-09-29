@@ -37,13 +37,13 @@ qif_sfa_op:
 ################
 
 # qif neuron
-qif_pop:
+qif:
   base: NodeTemplate
   operators:
     - qif_op
 
 # qif neuron with sfa
-qif_sfa_pop:
+qif_sfa:
   base: NodeTemplate
   operators:
     - qif_sfa_op

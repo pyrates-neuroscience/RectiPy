@@ -55,7 +55,7 @@ References
 # Step 1: initialize a :code:`rectipy.Network` instance
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# We will start out by creating a random coupling matrix and impementing an RNN model of coupled QIF neurons.
+# We will start out by creating a random coupling matrix and implementing an RNN model of coupled QIF neurons.
 
 from rectipy import Network
 import numpy as np

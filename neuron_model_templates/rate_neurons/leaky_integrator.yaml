@@ -11,7 +11,7 @@ li_op:
   variables:
     u: output(0.0)
     tau: 1.0
-    k: 2.0
+    k: 1.0
     r_in: input(0.0)
     I_ext: input(0.0)
 
@@ -20,7 +20,7 @@ sigmoid_op:
   base: OperatorTemplate
   equations: "r = r_max / (1 + exp(s*(u0-u)))"
   variables:
-    m: output(0.0)
+    r: output(0.0)
     r_max: 1.0
     s: 1.0
     u0: 0.0

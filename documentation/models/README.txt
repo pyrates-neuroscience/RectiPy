@@ -1,0 +1,1 @@
+Here, we present use examples and introductions to each neuron model that comes pre-implemented with `RectiPy`.

@@ -6,6 +6,14 @@ Changelog
 
 .. _section-1:
 
+0.5.2
+~~~~~
+
+- added use example for the QIF neuron models
+- added use example gallery skeleton
+- removed bug from SRNNLayer that caused model initialization to fail when no `dtype` for variales was provided
+- added `.gitignore` file
+
 0.5.1
 ~~~~~
 

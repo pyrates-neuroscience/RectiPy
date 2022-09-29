@@ -40,12 +40,12 @@ extensions = [
 # configuration of sphinx gallery
 sphinx_gallery_conf = {
     'examples_dirs': [
-        #'../../model_introductions',
-        #'../../model_analysis',
+        '../../models',
+        '../../interfaces',
     ],   # path to your example scripts
     'gallery_dirs': [
-        #'auto_introductions',
-        #'auto_analysis',
+        'auto_models',
+        'auto_interfaces',
     ]  # path to where to save gallery generated output
 
 }

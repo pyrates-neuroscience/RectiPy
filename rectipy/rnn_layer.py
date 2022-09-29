@@ -159,7 +159,10 @@ class SRNNLayer(RNNLayer):
         for key in ['spike_threshold', 'spike_reset', 'dtype']:
             if key in kwargs:
                 kwargs_init[key] = kwargs.pop(key)
-        kwargs['float_precision'] = str(kwargs_init['dtype']).split('.')[-1]
+        try:
+            kwargs['float_precision'] = str(kwargs_init['dtype']).split('.')[-1]
+        except KeyError:
+            kwargs['float_precision'] = "float64"
         clear_template = kwargs.pop('clear', True)
 
         # generate rnn template and function

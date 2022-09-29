@@ -30,7 +30,7 @@ qif_sfa_op:
       - "x' = -x/tau_x + alpha*spike"
   variables:
     x: variable(0.0)
-    alpha: 0.1
+    alpha: 1.0
     tau_x: 10.0
 
 # node templates

@@ -86,7 +86,8 @@ obs = qif.run(inputs=inp)
 
 # %%
 # The return value of that method is a `rectipy.observer.Observer` instance, which is described in detail
-# `in another use example <>`_. Importantly, it records the output variable of the RNN at each integration step by
+# `in another use example <https://rectipy.readthedocs.io/en/latest/auto_interfaces/observer.html>`_.
+# Importantly, it records the output variable of the RNN at each integration step by
 # default. We can visualize these dynamics as follows:
 
 obs.plot("out")

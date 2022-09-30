@@ -37,6 +37,7 @@ class Observer:
             self._recordings['loss'] = []
         if record_output:
             self._recordings['out'] = []
+        self._recordings["steps"] = []
 
     def __getitem__(self, item: str):
         return self._recordings[item]
@@ -47,11 +48,13 @@ class Observer:
         """
         return self._state_vars
 
-    def record(self, output: torch.Tensor, loss: float, record_vars: Iterable[torch.Tensor]) -> None:
+    def record(self, step: int, output: torch.Tensor, loss: float, record_vars: Iterable[torch.Tensor]) -> None:
         """Performs a single recording steps.
 
         Parameters
         ----------
+        step
+            Integration step.
         output
             Output of the `Network` model.
         loss
@@ -64,6 +67,7 @@ class Observer:
         None
         """
         recs = self._recordings
+        recs["steps"].append(step)
         for key, val, reduce in zip(self._state_vars, record_vars, self._reduce_vars):
             v = val.detach().numpy()
             recs[key].append(np.mean(v) if reduce else v)
@@ -97,7 +101,7 @@ class Observer:
             _, ax = plt.subplots(**subplot_kwargs)
 
         y_sig = np.asarray(self._recordings[y])
-        x_sig = np.arange(0, y_sig.shape[0])*self._dt if x is None else self._recordings[x]
+        x_sig = np.asarray(self._recordings["steps"])*self._dt if x is None else self._recordings[x]
 
         ax.plot(x_sig, y_sig, **kwargs)
         ax.set_xlabel('time' if x is None else x)

@@ -9,7 +9,7 @@ It has a single state-variable :math:`u_i`, the dynamics of which are governed b
 .. math::
 
     \\dot u_i &= -\\frac{u_i}{\\tau} + I_i(t) + k r_i^{in}, \n
-    r_i = f(u_i).
+    r_i &= f(u_i).
 
 The two constants governing the dynamics of :math:`u_i` are the global decay time constant :math:`\\tau` and the global
 coupling constant :math:`k`. The variable :math:`r_i` represents a potentially non-linear transform of the state-variable :math:`u_i`

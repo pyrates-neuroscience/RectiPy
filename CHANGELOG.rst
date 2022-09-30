@@ -14,6 +14,7 @@ Changelog
 - added use example gallery skeleton
 - added use example for network initialization
 - added use example for numerical simulations
+- added use example for the observer
 - removed bug from SRNNLayer that caused model initialization to fail when no `dtype` for variales was provided
 - removed bug from the sigmoid operator that is part of the `leaky_integrator.yaml` model definition file
 - added `.gitignore` file

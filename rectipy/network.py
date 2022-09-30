@@ -375,7 +375,7 @@ class Network:
                 if step % sampling_steps == 0:
                     if verbose:
                         print(f'Progress: {step}/{steps} test steps finished.')
-                    obs.record(prediction, error.item(), self.rnn_layer.record(rec_vars))
+                    obs.record(step, prediction, error.item(), self.rnn_layer.record(rec_vars))
 
         return obs, loss_total
 
@@ -421,7 +421,7 @@ class Network:
                 if step % sampling_steps == 0:
                     if verbose:
                         print(f'Progress: {step}/{steps} integration steps finished.')
-                    obs.record(output, 0.0, self.rnn_layer.record(rec_vars))
+                    obs.record(step, output, 0.0, self.rnn_layer.record(rec_vars))
 
         return obs
 
@@ -515,7 +515,7 @@ class Network:
             if step % sampling_steps == 0:
                 if verbose:
                     print(f'Progress: {step}/{steps} training steps finished.')
-                obs.record(prediction, error.item(), self.rnn_layer.record(rec_vars))
+                obs.record(step, prediction, error.item(), self.rnn_layer.record(rec_vars))
 
     def _train_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
                       optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
@@ -547,7 +547,7 @@ class Network:
 
                 # results storage
                 if step % sampling_steps == 0:
-                    obs.record(prediction, error.item(), self.rnn_layer.record(rec_vars))
+                    obs.record(step, prediction, error.item(), self.rnn_layer.record(rec_vars))
 
             # display progress
             if verbose:

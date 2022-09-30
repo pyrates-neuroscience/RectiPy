@@ -176,7 +176,12 @@ class Network:
         trainable
             If true, the output weights will be made available for optimization.
         activation_function
-            Optional activation function applied to the output of the output layer.
+            Optional activation function applied to the output of the output layer. Valid options are:
+            - 'tanh' for `torch.nn.Tanh()`
+            - 'sigmoid' for `torch.nn.Sigmoid()`
+            - 'softmax' for `torch.nn.Softmax(dim=0)`
+            - `softmin` for `torch.nn.Softmin(dim=0)`
+            - None (default) for `torch.nn.Identity()`
         dtype
             Data type of the input weights.
         kwargs

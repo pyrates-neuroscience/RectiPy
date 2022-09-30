@@ -39,7 +39,7 @@ net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_
 # variables of a single LI neuron. Since `RectiPy` comes with a module that contains all its pre-implemented models
 # (called `neuron_model_templates`), we can use the :code:`.` syntax to specify that path. If you define your own
 # neuron model, you can use standard Python syntax to specify the path to that model, i.e. :code:`node = "<path>/<yaml_file_name>.<template_name>"`.
-# As a second important piece of our network definition, we need to provide an :math:`N \by N` coupling matrix, that defines
+# As a second important piece of our network definition, we need to provide an :math:`N x N` coupling matrix, that defines
 # the structure of the recurrent coupling in a network of :math:`N` neurons. Above, we call this matrix :code:`J`.
 # During the call to `rectipy.Network.from_yaml`, an `rectipy.rnn_layer.RNNLayer` instance will be created, which is the
 # core layer of any network. It will be accessible via the attribute `Network.rnn_layer` and contains a network of
@@ -125,4 +125,34 @@ print(f"RNN layer parameters: {net.rnn_layer.args}")
 # How to add an input layer to the network
 # ----------------------------------------
 #
+# Initializing a `rectipy.Network` instance as described above leads to a network with a single RNN layer.
+# After initialization, input and output layers can be added to the network. The code below shows how to add an input layer:
+
+m = 3
+net.add_input_layer(m)
+
+# %%
+# This code adds an input layer with 3 input units and initializes a random weight matrix to connect the ::math:`m` input units to
+# the :math:`N` RNN neurons. These weights can also be defined by the user:
+
+net.remove_input_layer()
+net.add_input_layer(m, weights=np.random.randn(m, N))
+
+# %%
+# The input layer will automatically project its output to the variable which we declared as :code:`input_var` when we
+# called `Network.from_yaml`. Additional input that we feed into the network during a simulation or training procedure
+# will now be fed to the input layer units instead.
+
+# %%
+# How to add an output layer to the network
+# -----------------------------------------
 #
+# It is also possible to add output layers to the network using a similar syntax:
+
+k = 2
+net.add_output_layer(k, weights=np.random.randn(N, k), activation_function="sigmoid")
+
+# %%
+# The keyword argument :code:`ativation_function` is the only argument that differs from the input layer initialization.
+# It allows users to add a non-linear transform to activation of the output layer units. Have a look at the API of the
+# `Network.add_output_layer method <https://rectipy.readthedocs.io/en/latest/network.html>`_ for available options.

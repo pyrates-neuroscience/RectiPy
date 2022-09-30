@@ -12,9 +12,13 @@ Changelog
 - added use example for the QIF neuron models
 - added use example for the leaky-integrator rate neuron model
 - added use example gallery skeleton
+- added use example for network initialization
+- added use example for numerical simulations
 - removed bug from SRNNLayer that caused model initialization to fail when no `dtype` for variales was provided
 - removed bug from the sigmoid operator that is part of the `leaky_integrator.yaml` model definition file
 - added `.gitignore` file
+- added model template for LIF neurons
+- improved docstrings of the `Network` class
 
 0.5.1
 ~~~~~

@@ -411,7 +411,7 @@ class Network:
         model = self.compile(device) if self._model is None else self._model
 
         # initialize observer
-        obs = Observer(dt=self.rnn_layer.dt, record_loss=False, **kwargs)
+        obs = Observer(dt=self.rnn_layer.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)
         rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
 
         # forward input through static network

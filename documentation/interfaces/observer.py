@@ -112,8 +112,30 @@ s = obs["out"]
 # Using the Observer in custom scripts
 # ------------------------------------
 #
-# When you are fine with the options for numerical simulations, model training, and model testing that `rectipy.Network`
-# provides via its methods `run`, `train`, and `test`, you will not have to bother with observer initialization and
-# manual variable recordings. In this case, you can control the behavior of the observer via keyword arguments to these
-# methods. The keyword arguments are the same for each of these methods and we will demonstrate how to use them via the
-# `Network.run` method.
+# Standard numerical simulations, model training, and model testing methods are provided by `rectipy.Network`
+# via its methods `run`, `train`, and `test`. You will not have to bother with observer initialization and
+# manual variable recordings if you are using these methods. Instead, you can control the behavior of the observer
+# via keyword arguments to these methods. The keyword arguments are the same for each of these methods and we will
+# demonstrate how to use them via the `Network.run` method. The code below performs the same simulation that we performed
+# manually above.
+
+obs = net.run(inputs=inp, record_vars=[("v", True)], verbose=False)
+
+# %%
+# As additional options, you can change the sampling step-size of your recordings:
+
+obs2 = net.run(inputs=inp, record_vars=[("v", True)], sampling_steps=2, verbose=False)
+print(len(obs["v"]))
+print(len(obs2["v"]))
+ax = obs.plot("v")
+obs2.plot("v", ax=ax)
+plt.legend(["obs", "obs2"])
+plt.show()
+
+# %%
+# As you can see, the second observer stored the state variable :math:`v` at only every second integration step, when
+# :code:`sampling_steps=2` was given.
+# You can also toggle storage of the output variable and loss on and off, using the same keyword arguments as for the
+# observer initialization:
+
+net.run(inputs=inp, record_output=True, record_loss=False, verbose=False)

@@ -31,14 +31,7 @@ node = "neuron_model_templates.spiking_neurons.qif.qif"
 
 # network initialization
 net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                        op="qif_op", spike_def="v", spike_var="spike",
-                        record_vars=["v"])
-
-# %%
-# Note that we provided the keyword argument :code:`record_vars` in our call to `Network.from_yaml`. You can use this
-# keyword argument to declare any additional state variables of the model that you would like to record apart from the
-# variable declared as :code:`output_var`. The latter will be recorded automatically during calls to `Network.run`,
-# if not manually turned off.
+                        op="qif_op", spike_def="v", spike_var="spike")
 
 # %%
 # Step 2: Observer initialization
@@ -89,6 +82,9 @@ for step in range(steps):
 # In that example, we recorded the network output variable :math:`s` as well as the QIF neuron state variable :math:`v`
 # at each integration step. For the latter, we made use of the `RNNLayer.record` method which yields the current state
 # of each of the variables passed in the list.
+# Note that the names of the variables that have been declared as :code:`record_vars` during the initialization of the
+# Observer are also available via the attribute :code:`obs.recorded_rnn_variables`. Thus, you could also provide the
+# keyword argument :code:`record_vars=[net[v] for v in obs.recorded_rnn_variables]` to the :code:`Observer.record` method.
 #
 # After this procedure, we can visualize our recordings via the `Observer.plot` method, which allows you to either plot
 # state variables against time or against each other.

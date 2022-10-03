@@ -2,8 +2,8 @@
 Quadratic Integrate-and-Fire (QIF) Spiking Neuron Model
 =======================================================
 
-The QIF neuron model is a spiking point neuron model that simplifies the dynamics of a neuron to the evolution of
-a single, dimensionless state variable :math:`v_i`:
+The `QIF <https://en.wikipedia.org/wiki/Quadratic_integrate_and_fire>`_ neuron model is a spiking point neuron model
+that simplifies the dynamics of a neuron to the evolution of a single, dimensionless state variable :math:`v_i`:
 
 .. math::
 
@@ -30,7 +30,7 @@ The first version of the QIF neuron model available in `RectiPy` defines the inp
 .. math::
 
     \\mu_i(t) &= \\eta_i + I_i(t) + \\tau s_i^{in}, \n
-    \\tau_s \\dot s_i &= -\\frac{s}{\\tau_s} + \\delta(v_i - v_{peak}).
+    \\tau_s \\dot s_i &= -\\frac{s_i}{\\tau_s} + \\delta(v_i - v_{peak}).
 
 This definition of the input :math:`\\mu_i` allows for the usage of the QIF neuron as part of an RNN layer.
 In the first equation, :math:`\\eta_i` represents a neuron-specific excitability, :math:`I_i` represents an extrinsic

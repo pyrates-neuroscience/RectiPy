@@ -13,10 +13,10 @@ lif_op:
     replace:
       k*r_in: k*s_in
     add:
-      - "s = -s/tau_s + spike"
+      - "s' = -s/tau_s + spike"
   variables:
     s: output(0.0)
-    u: variable
+    v: variable(0.0)
     tau_s: 0.5
     s_in: input(0.0)
     spike: input(0.0)

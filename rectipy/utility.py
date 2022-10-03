@@ -46,8 +46,12 @@ def add_op_name(op: str, var: Union[str, None], new_var_names: dict) -> Union[st
     str
         Updated variable name.
     """
-    if var is None or '/' in var:
+    if var is None:
         return var
+    elif "/" in var:
+        _, v = var.split("/")
+        new_var_names[v] = var
+        return new_var_names[v]
     new_var_names[var] = f"{op}/{var}"
     return new_var_names[var]
 

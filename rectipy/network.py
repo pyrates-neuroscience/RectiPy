@@ -37,12 +37,16 @@ class Network:
         self._var_map = var_map if var_map else {}
         self._model = None
 
-    def __getitem__(self, item: int):
+    def __getitem__(self, item: Union[int, str]):
         try:
-            return self._model[item]
-        except TypeError:
-            self.compile()
-        return self._model[item]
+            return self.rnn_layer[item]
+        except KeyError:
+            try:
+                return self.rnn_layer[self._var_map[item]]
+            except KeyError:
+                if self._model is None:
+                    self.compile()
+                return self._model[item]
 
     def __len__(self):
         try:
@@ -54,7 +58,7 @@ class Network:
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
                   input_var: str, output_var: str, spike_var: str = None, spike_def: str = None, op: str = None,
-                  train_params: list = None, record_vars: list = None, **kwargs):
+                  train_params: list = None, **kwargs):
         """Creates a `Network` instance from a YAML template that defines a single RNN node and additional information
         about which nodes in the network should be connected to each other.
 
@@ -84,8 +88,6 @@ class Network:
             the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
         train_params
             Names of all RNN parameters that should be made available for optimization.
-        record_vars
-            Names of all variables that should be made available for recordings during training/testing/simulation runs.
         kwargs
             Additional keyword arguments provided to the `RNNLayer` (or `SRNNLayer` in case of spiking neurons).
 
@@ -104,14 +106,11 @@ class Network:
                 var_dict[key] = add_op_name(op, var, new_vars)
             if train_params:
                 train_params = [add_op_name(op, p, new_vars) for p in train_params]
-            if record_vars:
-                record_vars = [add_op_name(op, v, new_vars) for v in record_vars]
 
         # initialize rnn layer
         if spike_var is None and spike_def is None:
             rnn_layer = RNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
-                                           var_dict['out'], train_params=train_params, record_vars=record_vars,
-                                           **kwargs)
+                                           var_dict['out'], train_params=train_params, **kwargs)
         elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
                              'name of the variable that spikes should be stored in (`spike_def`) as well as the '
@@ -119,7 +118,13 @@ class Network:
         else:
             rnn_layer = SRNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
                                             var_dict['out'], spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                            train_params=train_params, record_vars=record_vars, **kwargs)
+                                            train_params=train_params, **kwargs)
+
+        # remember operator mapping for each RNN layer parameter and state variable
+        for p in rnn_layer.parameter_names:
+            add_op_name(op, p, new_vars)
+        for v in rnn_layer.variable_names:
+            add_op_name(op, v, new_vars)
 
         # initialize model
         return cls(weights.shape[0], rnn_layer, var_map=new_vars)
@@ -375,7 +380,7 @@ class Network:
                 if step % sampling_steps == 0:
                     if verbose:
                         print(f'Progress: {step}/{steps} test steps finished.')
-                    obs.record(step, prediction, error.item(), self.rnn_layer.record(rec_vars))
+                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
 
         return obs, loss_total
 
@@ -421,7 +426,7 @@ class Network:
                 if step % sampling_steps == 0:
                     if verbose:
                         print(f'Progress: {step}/{steps} integration steps finished.')
-                    obs.record(step, output, 0.0, self.rnn_layer.record(rec_vars))
+                    obs.record(step, output, 0.0, [self[v] for v in rec_vars])
 
         return obs
 
@@ -515,7 +520,7 @@ class Network:
             if step % sampling_steps == 0:
                 if verbose:
                     print(f'Progress: {step}/{steps} training steps finished.')
-                obs.record(step, prediction, error.item(), self.rnn_layer.record(rec_vars))
+                obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
 
     def _train_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
                       optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
@@ -524,6 +529,7 @@ class Network:
         if inp.shape[0] != target.shape[0] or inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
+
         epochs = inp.shape[0]
         steps = inp.shape[1]
         for epoch in range(epochs):
@@ -547,7 +553,7 @@ class Network:
 
                 # results storage
                 if step % sampling_steps == 0:
-                    obs.record(step, prediction, error.item(), self.rnn_layer.record(rec_vars))
+                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
 
             # display progress
             if verbose:

@@ -50,7 +50,7 @@ def test_3_1_rnn_init():
     args = (torch.zeros((n,)), torch.zeros((n,)), torch.tensor(weights), 1.0)
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, 1, list(range(n)))
+    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
     rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                               output_var="tanh_op/r", clear=True, verbose=False)
@@ -60,8 +60,7 @@ def test_3_1_rnn_init():
                                spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
     rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, train_params=["weight"], record_vars=["li_op/u"],
-                              verbose=False)
+                              output_var="tanh_op/r", clear=True, train_params=["weights"], verbose=False)
 
     # these tests should pass
     assert isinstance(rnn1, RNNLayer)
@@ -70,13 +69,13 @@ def test_3_1_rnn_init():
     assert len(rnn2.y) == n
     assert len(rnn3.y) == 2*n
     assert len(list(rnn4.parameters())) - len(list(rnn2.parameters())) == 1
-    assert list(rnn4.record(['li_op/u']))[0].shape[0] == n
+    assert rnn4['li_op/v'].shape[0] == n
     assert rnn3.y.dtype == torch.float32
     assert rnn4.y.dtype == torch.float64
 
     # these tests should fail
     with pytest.raises(KeyError):
-        list(rnn2.record(['li_op/u']))
+        _ = rnn2['li_op/u']
 
 
 def test_3_2_detach():
@@ -92,14 +91,14 @@ def test_3_2_detach():
     args2 = tuple([a.clone() if type(a) is torch.Tensor else a for a in args])
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, 1, list(range(n)))
-    rnn2 = RNNLayer(func, args2, 1, list(range(n)))
+    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
+    rnn2 = RNNLayer(func, args2,{"out": [0, n]}, {"in": 0})
     rnn2.detach()
 
     # these tests should pass
     assert rnn1.y.requires_grad
     assert not rnn2.y.requires_grad
-    for arg1, arg2 in zip(rnn1.args, rnn2.args):
+    for arg1, arg2 in zip(rnn1._args, rnn2._args):
         if type(arg1) is torch.Tensor:
             assert arg1.requires_grad
             assert not arg2.requires_grad
@@ -121,13 +120,13 @@ def test_3_3_forward():
     inp = torch.randn(n, dtype=dtype)
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, input_var=inp_idx, output=list(range(n)))
+    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
     rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                               output_var="tanh_op/r", clear=True, verbose=False)
-    rnn3 = RNNLayer(func, args + (1.0, ), input_var=inp_idx, output=list(range(n)))
-    rnn4 = RNNLayer(func, args, input_var=inp_idx + 2, output=list(range(n)))
-    rnn5 = RNNLayer(func, args, input_var=inp_idx, output=[0, 1, 2])
+    rnn3 = RNNLayer(func, args + (1.0, ), {"out": [0, n]}, {"in": 0})
+    rnn4 = RNNLayer(func, args, {"out": [0, n]}, {"in": 2})
+    rnn5 = RNNLayer(func, args, {"out": [0, 3]}, {"in": 0})
 
     # detach the rnns
     for rnn in [rnn1, rnn2, rnn3, rnn4, rnn5]:
@@ -154,41 +153,7 @@ def test_3_3_forward():
         rnn1.forward(np.random.randn(n))
 
 
-def test_3_4_record():
-    """Tests record method of RNNLayer.
-    """
-
-    # parameters
-    func = rate
-    n = 10
-    weights = np.random.randn(n, n)
-    args = (torch.zeros((n,)), torch.zeros((n,)), torch.tensor(weights), 1.0)
-
-    # create instances of RNNLayer
-    rnn1 = RNNLayer(func, args, 1, list(range(n)))
-    rnn2 = RNNLayer(func, args, 1, list(range(n)), record_vars={'r1': [0], 'r2': [2, 3]})
-    rnn3 = RNNLayer(func, args, 1, list(range(n)), record_vars={'r1': [n]})
-
-    # perform recordings
-    r1 = list(rnn2.record(['r1']))
-    r2 = list(rnn2.record(['r1', 'r2']))
-
-    # these tests should pass
-    assert r1
-    assert len(r2) - len(r1) == 1
-    assert r1[0][0].numpy() == args[0][0].numpy()
-    assert sum(r2[1].shape) == 2
-
-    # these tests should fail
-    with pytest.raises(KeyError):
-        rnn1.record(['r1'])
-        list(rnn2.record(['r3']))
-    with pytest.raises(IndexError):
-        rnn3.record(['r1'])
-        _ = r1[1]
-
-
-def test_3_5_reset():
+def test_3_4_reset():
     """Tests reset method of RNNLayer
     """
 
@@ -202,7 +167,7 @@ def test_3_5_reset():
     x = torch.randn(n)
 
     # create instance of RNNLayer
-    rnn = RNNLayer(func, args, 1, list(range(n)))
+    rnn = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
 
     # collect states
     r1 = rnn.forward(x)

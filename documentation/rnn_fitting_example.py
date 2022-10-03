@@ -135,8 +135,8 @@ ax3.set_xlabel('epochs')
 ax3.set_ylabel('MSE')
 plt.tight_layout()
 
-for key, target, val, start in zip(["k", "tau"], [target_net.rnn_layer.args[1].numpy(), target_net.rnn_layer.args[0].numpy()],
-                                   [learning_net.rnn_layer.args[1].detach().numpy(), learning_net.rnn_layer.args[0].detach().numpy()],
+for key, target, val, start in zip(["k", "tau"], [target_net.rnn_layer._args[1].numpy(), target_net.rnn_layer._args[0].numpy()],
+                                   [learning_net.rnn_layer._args[1].detach().numpy(), learning_net.rnn_layer._args[0].detach().numpy()],
                                    [k0, tau0]):
     print(f"Parameter: {key}. Target: {target}. Fitted value: {val}. Initial value: {start}.")
 

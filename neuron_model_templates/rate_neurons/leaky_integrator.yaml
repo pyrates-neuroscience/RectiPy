@@ -7,9 +7,9 @@
 # leaky integrator operator
 li_op:
   base: OperatorTemplate
-  equations: "u' = -u/tau + k*r_in + I_ext"
+  equations: "v' = -v/tau + k*r_in + I_ext"
   variables:
-    u: output(0.0)
+    v: output(0.0)
     tau: 1.0
     k: 1.0
     r_in: input(0.0)
@@ -18,21 +18,21 @@ li_op:
 # sigmoid transformation
 sigmoid_op:
   base: OperatorTemplate
-  equations: "r = r_max / (1 + exp(s*(u0-u)))"
+  equations: "r = r_max / (1 + exp(s*(v0-v)))"
   variables:
     r: output(0.0)
     r_max: 1.0
     s: 1.0
-    u0: 0.0
-    u: input(0.0)
+    v0: 0.0
+    v: input(0.0)
 
 # hyperbolic tangent transformation
 tanh_op:
   base: OperatorTemplate
-  equations: "r = tanh(u)"
+  equations: "r = tanh(v)"
   variables:
     r: output(0.0)
-    u: input(0.0)
+    v: input(0.0)
 
 # node templates
 ################

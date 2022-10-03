@@ -1,18 +1,18 @@
 """
-Leaky-Integrator Rate Neuron Model
+Leaky Integrator Rate Neuron Model
 ==================================
 
-The leaky integrator (LI) is a standard model for neuronal dynamics. It has been used for spiking as well as rate neuron models.
-Here, we introduce a rate-coupled LI neuron model.
-It has a single state-variable :math:`u_i`, the dynamics of which are governed by
+The `leaky integrator <https://en.wikipedia.org/wiki/Leaky_integrator>`_ (LI) is a standard model for neuronal dynamics.
+It has been used for spiking as well as rate neuron models. Here, we introduce a rate-coupled LI neuron model.
+It has a single state-variable :math:`v_i`, the dynamics of which are governed by
 
 .. math::
 
-    \\dot u_i &= -\\frac{u_i}{\\tau} + I_i(t) + k r_i^{in}, \n
-    r_i &= f(u_i).
+    \\dot v_i &= -\\frac{v_i}{\\tau} + I_i(t) + k r_i^{in}, \n
+    r_i &= f(v_i).
 
-The two constants governing the dynamics of :math:`u_i` are the global decay time constant :math:`\\tau` and the global
-coupling constant :math:`k`. The variable :math:`r_i` represents a potentially non-linear transform of the state-variable :math:`u_i`
+The two constants governing the dynamics of :math:`v_i` are the global decay time constant :math:`\\tau` and the global
+coupling constant :math:`k`. The variable :math:`r_i` represents a potentially non-linear transform of the state-variable :math:`v_i`
 and is used as a representation of the output rate of the neuron. This variable should be used to connect a neuron to other neurons
 in an RNN. The variable :math:`r_i^{in}` serves as target variable for such connections.
 `RectiPy` provides two different versions of the LI neuron that use two different choices for :math:`f`.
@@ -21,8 +21,9 @@ In the examples below, we examine an RNN of randomly coupled LI neurons for each
 LI neuron with a hyperbolic tangent transform
 ---------------------------------------------
 
-In this example, we will examine an RNN of LI neurons with :math:`r_i = \\tanh(u_i)`, i.e. the hyperbolic tangent function
-that represents a non-linear mapping of :math:`u_i` to the open interval :math:`(-1, 1)`.
+In this example, we will examine an RNN of LI neurons with :math:`r_i = \\tanh(v_i)`, i.e. the
+`hyperbolic <https://en.wikipedia.org/wiki/Hyperbolic_functions>`_ tangent function
+that represents a non-linear mapping of :math:`v_i` to the open interval :math:`(-1, 1)`.
 """
 
 # %%
@@ -37,11 +38,11 @@ import numpy as np
 # define network parameters
 node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
 N = 5
-J = np.random.randn(N, N)*2.0
+J = np.random.randn(N, N)*1.5
 
 # initialize network
 net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                        output_var="li_op/u", dt=1e-3)
+                        output_var="li_op/v", dt=1e-3)
 
 # %%
 # The above code instantiates a `rectipy.Network` with :math:`N = 5` LI neurons with random coupling weights drawn from
@@ -69,7 +70,7 @@ obs = net.run(inputs=inp, sampling_steps=10)
 from matplotlib.pyplot import show, legend
 
 obs.plot("out")
-legend([f"u_{i}" for i in range(N)])
+legend([f"v_{i}" for i in range(N)])
 show()
 
 # %%
@@ -80,20 +81,21 @@ show()
 # LI neuron with a logistic transform
 # -----------------------------------
 #
-# In this example, we will examine an RNN of LI neurons with :math:`r_i = \frac{1}{1 + \exp(-u_i)}`, i.e. the logistic
-# function that represents a non-linear mapping of :math:`u_i` to the open interval :math:`(0, 1)`.
+# In this example, we will examine an RNN of LI neurons with :math:`r_i = \frac{1}{1 + \exp(-v_i)}`, i.e. the
+# `logistic function <https://en.wikipedia.org/wiki/Logistic_function>`_ that represents a non-linear mapping of
+# :math:`v_i` to the open interval :math:`(0, 1)`.
 
 # initialize network
 node = "neuron_model_templates.rate_neurons.leaky_integrator.sigmoid"
 net = Network.from_yaml(node, weights=J, source_var="sigmoid_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                        output_var="li_op/u", dt=1e-3)
+                        output_var="li_op/v", dt=1e-3)
 
 # perform numerical simulation
 obs = net.run(inputs=inp, sampling_steps=10)
 
 # visualize the network dynamics
 obs.plot("out")
-legend([f"s_{i}" for i in range(N)])
+legend([f"v_{i}" for i in range(N)])
 show()
 
 # %%

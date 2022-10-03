@@ -32,7 +32,7 @@ J = np.random.randn(N, N)*2.0
 
 # initialize network
 net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                        output_var="li_op/u")
+                        output_var="li_op/v")
 
 # %%
 # In the code above, the variable :code:`node` is a path pointing to a YAML template that defines the dynamic equations and
@@ -62,8 +62,8 @@ net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_
 
 print(f"Number of neurons in network: {net.n}")
 print(f"RNN layer: {net.rnn_layer}")
-print(f"State variables of the neurons in the RNN layer: {net.rnn_layer.y}")
-print(f"RNN layer parameters: {net.rnn_layer.args}")
+print(f"State variables of the neurons in the RNN layer: {net.rnn_layer.variable_names}")
+print(f"RNN layer parameters: {net.rnn_layer.parameter_names}")
 
 # %%
 # How to create a spiking neural network
@@ -77,7 +77,7 @@ node = "neuron_model_templates.spiking_neurons.lif.lif"
 
 # initialize network
 net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
-                        output_var="s", op="lif_op", spike_var="spike", spike_def="u")
+                        output_var="s", op="lif_op", spike_var="spike", spike_def="v")
 
 # %%
 # First, note that we did not provide the operator template names with the variable names in this call to `Network.from_yaml`.
@@ -97,15 +97,15 @@ net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", inpu
 #       else:
 #           spike_var = 0.0
 #
-# In more mathematic terms, and specific to our example model, this means that a spike is counted when :math:`u_i \geq \theta`,
-# where :math:`\theta` is the spiking threshold. The variable specified as :code:`spike_var` is then defined as :math:`\delta(u_i-\theta)`,
+# In more mathematic terms, and specific to our example model, this means that a spike is counted when :math:`v_i \geq \theta`,
+# where :math:`\theta` is the spiking threshold. The variable specified as :code:`spike_var` is then defined as :math:`\delta(v_i-\theta)`,
 # where :math:`\delta` is the `Dirac delta function <https://en.wikipedia.org/wiki/Dirac_delta_function>`_, and the neuron's
-# state variable is reset: :math:`u_i \rightarrow u_r`.
-# The two control parameters of this spike reset conditions, :math:`\theta` and :math:`u_r`,  can be controlled via two
+# state variable is reset: :math:`v_i \rightarrow v_r`.
+# The two control parameters of this spike reset conditions, :math:`\theta` and :math:`v_r`,  can be controlled via two
 # additional keyword arguments:
 
 net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
-                        output_var="s", op="lif_op", spike_var="spike", spike_def="u", spike_threshold=100.0,
+                        output_var="s", op="lif_op", spike_var="spike", spike_def="v", spike_threshold=100.0,
                         spike_reset=-100.0)
 
 # %%
@@ -113,13 +113,17 @@ net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", inpu
 # Let's inspect the differences between the spiking network RNN layer and the rate-neuron RNN layer.
 
 print(f"RNN layer: {net.rnn_layer}")
-print(f"State variables of the neurons in the RNN layer: {net.rnn_layer.y}")
-print(f"RNN layer parameters: {net.rnn_layer.args}")
+print(f"State variables of the neurons in the RNN layer: {net.rnn_layer.variable_names}")
+print(f"RNN layer parameters: {net.rnn_layer.parameter_names}")
+print(f"Additional RNN layer state variable: {net['s']}")
+print(f"RNN layer synaptic time constant: {net['tau_s']}")
 
 # %%
 # As can be seen, the attribute `Network.rnn_layer` is now an `SRNNLayer` instance instead of an `RNNLayer` instance.
 # Furthermore, the RNN layer has a different state vector and a different number of parameters, owing to the differences
-# in the LIF neuron as compared to the LI rate neuron.
+# in the LIF neuron as compared to the LI rate neuron. The state variable difference comes from the additional
+# state-variable :math:`s_i`, whereas the difference in the number of model parameters is caused by the synaptic time
+# constant :math:`\tau_s`.
 
 # %%
 # How to add an input layer to the network
@@ -153,6 +157,6 @@ k = 2
 net.add_output_layer(k, weights=np.random.randn(N, k), activation_function="sigmoid")
 
 # %%
-# The keyword argument :code:`ativation_function` is the only argument that differs from the input layer initialization.
+# The keyword argument :code:`activation_function` is the only argument that differs from the input layer initialization.
 # It allows users to add a non-linear transform to activation of the output layer units. Have a look at the API of the
 # `Network.add_output_layer method <https://rectipy.readthedocs.io/en/latest/network.html>`_ for available options.

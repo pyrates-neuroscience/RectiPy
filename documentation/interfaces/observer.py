@@ -83,7 +83,7 @@ net.compile()
 # perform numerical simulation
 for step in range(steps):
     out = net.forward(inp[step, :])
-    obs.record(step, output=out, loss=0.0, record_vars=net.rnn_layer.record(["qif_op/v"]))
+    obs.record(step, output=out, loss=0.0, record_vars=[net["v"]])
 
 # %%
 # In that example, we recorded the network output variable :math:`s` as well as the QIF neuron state variable :math:`v`

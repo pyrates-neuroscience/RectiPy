@@ -7,58 +7,79 @@ import numpy as np
 
 class RNNLayer(Module):
 
-    def __init__(self, rnn_func: Callable, rnn_args: tuple, input_var: int, output: list, dt: float = 1e-3,
-                 dtype: torch.dtype = torch.float64, train_params: list = None, record_vars: dict = None):
+    def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict, dt: float = 1e-3,
+                 dtype: torch.dtype = torch.float64, train_params: list = None, **kwargs):
 
         super().__init__()
         self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad)
-        self.output = torch.tensor(output, dtype=torch.int64)
         self.dt = dt
         self.func = rnn_func
-        self.args = list(rnn_args[1:])
-        self.train_params = [self.args[idx-1] for idx in train_params] if train_params else []
-        self._record_vars = record_vars
-        self._inp_ext = input_var - 1
+        self._args = list(rnn_args[1:])
+        self._var_map = var_map
+        self._param_map = param_map
+        self._start = torch.tensor(self._var_map["out"][0], dtype=torch.int64)
+        self._stop = torch.tensor(self._var_map["out"][-1], dtype=torch.int64)
+        self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
+        self._inp_ext = self._param_map["in"]
+
+    def __getitem__(self, item):
+        try:
+            return self._args[self._param_map[item]]
+        except KeyError:
+            idx = self._var_map[item]
+            if type(idx) is tuple:
+                return self.y[idx[0]:idx[1]]
+            return self.y[idx]
+
+    @property
+    def parameter_names(self) -> list:
+        return list(self._param_map.keys())
+
+    @property
+    def variable_names(self) -> list:
+        return list(self._var_map.keys())
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
-                  input_var: str, output_var: str, train_params: list = None, record_vars: list = None, **kwargs):
+                  input_var: str, output_var: str, train_params: list = None, **kwargs):
 
         # extract keyword arguments for initialization
         dt = kwargs.pop('dt', 1e-3)
         clear_template = kwargs.pop('clear', True)
         dtype = kwargs.pop('dtype', torch.float64)
         kwargs['float_precision'] = str(dtype).split('.')[-1]
+        param_mapping = kwargs.pop("param_mapping", {})
+        param_mapping["in"] = input_var
+        param_mapping["weights"] = "in_edge_0/weight"
+        var_mapping = kwargs.pop("var_mapping", {})
+        var_mapping["out"] = output_var
 
         # generate rnn template and function
         try:
-            func, args, keys, template, state_var_indices = \
+            func, args, keys, template, var_map = \
                 cls._circuit_from_yaml(node, weights, source_var, target_var, step_size=dt, **kwargs)
         except Exception as e:
             clear_frontend_caches()
             raise e
 
-        # get variable indices
-        input_idx = cls._get_param_indices(template, [input_var], keys)[0]
-        if train_params:
-            train_params = cls._get_param_indices(template, train_params, keys)
-        var_indices = cls._get_var_indices(template, output_var, recording_vars=record_vars)
+        # get parameter and variable indices
+        param_map = cls._get_param_indices(template, keys[1:])
+        param_map = _remove_node_from_dict_keys(param_map)
+        for key, var in param_mapping.items():
+            param_map[key] = param_map[var]
+        var_map.update(cls._get_var_indices(template, var_mapping))
+        var_map = _remove_node_from_dict_keys(var_map)
 
         if clear_template:
             clear(template)
-        return cls(func, args, input_idx, var_indices.pop('out'), dt=dt, train_params=train_params,
-                   record_vars=var_indices, dtype=dtype)
+        return cls(func, args, var_map, param_map, dt=dt, train_params=train_params, dtype=dtype, **kwargs)
 
     def forward(self, x):
-        self.args[self._inp_ext] = x
+        self._args[self._inp_ext] = x
         y_old = self.y.detach()
-        dy = self.func(0, y_old, *self.args)
+        dy = self.func(0, y_old, *self._args)
         self.y = y_old + self.dt * dy
-        return self.y[self.output]
-
-    def record(self, variables: list) -> Iterator:
-        for v in variables:
-            yield self.y[self._record_vars[v]]
+        return self.y[self._start:self._stop]
 
     def parameters(self, recurse: bool = True) -> Iterator:
         for p in self.train_params:
@@ -66,7 +87,7 @@ class RNNLayer(Module):
 
     def detach(self):
         self.y = self.y.detach()
-        self.args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self.args]
+        self._args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self._args]
 
     def reset(self, y: np.ndarray, idx: np.ndarray = None):
         if idx is None:
@@ -105,12 +126,8 @@ class RNNLayer(Module):
         return func, args[1:], keys[1:], template, state_var_indices
 
     @staticmethod
-    def _get_var_indices(template: CircuitTemplate, out_var: str, spike_var: str = None, recording_vars: list = None):
-        var_dict = {'out': f"all/{out_var}"}
-        if spike_var is not None:
-            var_dict['spike'] = f"all/{spike_var}"
-        if recording_vars:
-            var_dict.update({key: f"all/{key}" for key in recording_vars})
+    def _get_var_indices(template: CircuitTemplate, variables: dict):
+        var_dict = {key: f"all/{val}" for key, val in variables.items()}
         var_indices, _ = template.get_variable_positions(var_dict)
         results = {}
         for var in list(var_indices.keys()):
@@ -118,77 +135,69 @@ class RNNLayer(Module):
                 results[var] = [val[0] for val in var_indices.pop(var).values()]
             except AttributeError:
                 results[var] = var_indices.pop(var)
+            results[var] = (results[var][0], results[var][-1] + 1)
         return results
 
     @staticmethod
-    def _get_param_indices(template: CircuitTemplate, target_params: list, all_params: tuple, node_key: str = "n0"):
-        indices = []
-        for p in target_params:
+    def _get_param_indices(template: CircuitTemplate, params: tuple) -> dict:
+        param_mapping = {}
+        for p in params:
             try:
-                p_tmp, _ = template.get_var(f"{node_key}/{p}")
+                p_tmp, _ = template.get_var(p)
                 if hasattr(p_tmp, 'name'):
                     p_tmp = p_tmp.name
-                idx = all_params.index(p_tmp)
-            except IndexError:
-                idx = all_params.index(p)
-            indices.append(idx)
-        return indices
+                idx = params.index(p_tmp)
+            except (IndexError, ValueError):
+                idx = params.index(p)
+            param_mapping[p] = idx
+        return param_mapping
 
 
 class SRNNLayer(RNNLayer):
 
-    def __init__(self, rnn_func: Callable, rnn_args: tuple, input_var: int, spike_var: int, output: list,
-                 spike_def: list, spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
-                 dtype: torch.dtype = torch.float64, train_params: list = None, record_vars: dict = None):
+    def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
+                 spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
+                 dtype: torch.dtype = torch.float64, train_params: list = None, **kwargs):
 
-        super().__init__(rnn_func, rnn_args, input_var, output, dt=dt, dtype=dtype, train_params=train_params,
-                         record_vars=record_vars)
-        self._spike_var = spike_var - 1
+        super().__init__(rnn_func, rnn_args, var_map, param_map, dt=dt, dtype=dtype, train_params=train_params)
+        self._spike_var = self._param_map['spike_var']
         self._thresh = spike_threshold
         self._reset = spike_reset
-        self._spike_def = torch.tensor(spike_def, dtype=torch.int64)
+        self._spike_start = torch.tensor(self._var_map['spike_def'][0], dtype=torch.int64)
+        self._spike_stop = torch.tensor(self._var_map['spike_def'][-1], dtype=torch.int64)
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
                   input_var: str, output_var: str, spike_var: str = 'spike', spike_def: str = 'v',
-                  train_params: list = None, record_vars: list = None, **kwargs):
+                  train_params: list = None, **kwargs):
 
         # extract keyword arguments for initialization
-        dt = kwargs.pop('dt', 1e-3)
-        kwargs_init = {}
-        for key in ['spike_threshold', 'spike_reset', 'dtype']:
-            if key in kwargs:
-                kwargs_init[key] = kwargs.pop(key)
-        try:
-            kwargs['float_precision'] = str(kwargs_init['dtype']).split('.')[-1]
-        except KeyError:
-            kwargs['float_precision'] = "float64"
-        clear_template = kwargs.pop('clear', True)
+        kwargs["param_mapping"] = {"spike_var": spike_var}
+        kwargs["var_mapping"] = {"spike_def": spike_def}
 
-        # generate rnn template and function
-        func, args, keys, template, _ = cls._circuit_from_yaml(node, weights, source_var, target_var, step_size=dt,
-                                                               **kwargs)
-
-        # get variable indices
-        input_ext_idx, input_net_idx = cls._get_param_indices(template, [input_var, spike_var], keys)
-        if train_params:
-            train_params = cls._get_param_indices(template, train_params, keys)
-        var_indices = cls._get_var_indices(template, output_var, spike_var=spike_def, recording_vars=record_vars)
-
-        if clear_template:
-            clear(template)
-        return cls(func, args, input_ext_idx, input_net_idx, var_indices.pop('out'), var_indices.pop('spike'), dt=dt,
-                   train_params=train_params, record_vars=var_indices, **kwargs_init)
+        return super().from_yaml(node, weights, source_var, target_var, input_var, output_var,
+                                 train_params=train_params, **kwargs)
 
     def forward(self, x):
-        spikes = self.y[self._spike_def] >= self._thresh
-        self.args[self._spike_var] = spikes / self.dt
-        self.args[self._inp_ext] = x
+        spikes = self.y[self._spike_start:self._spike_stop] >= self._thresh
+        self._args[self._spike_var] = spikes / self.dt
+        self._args[self._inp_ext] = x
         y_old = self.y.detach()
-        dy = self.func(0, y_old, *self.args)
+        dy = self.func(0, y_old, *self._args)
         self.y = y_old + self.dt * dy
         self.spike_reset(spikes)
-        return self.y[self.output]
+        return self.y[self._start:self._stop]
 
     def spike_reset(self, spikes: torch.Tensor):
-        self.y[self._spike_def[spikes]] = self._reset
+        self.y[self._spike_start:self._spike_stop][spikes] = self._reset
+
+
+def _remove_node_from_dict_keys(mapping: dict) -> dict:
+    new_mapping = dict()
+    for key, val in mapping.items():
+        try:
+            *node, op, var = key.split("/")
+            new_mapping[f"{op}/{var}"] = val
+        except ValueError:
+            new_mapping[key] = val
+    return new_mapping

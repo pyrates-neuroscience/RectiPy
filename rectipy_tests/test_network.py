@@ -62,8 +62,7 @@ def test_4_1_init():
     net3 = Network.from_yaml(node, weights=weights, input_var="I_ext", output_var=out_var, source_var=s_var,
                              target_var="r_in", clear=True, verbose=False, op="li_op")
     net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, train_params=["weight"],
-                             record_vars=["li_op/u"])
+                             target_var=t_var, clear=True, verbose=False, train_params=["weights"])
     net5 = Network.from_yaml(node_spiking, weights=weights, input_var="I_ext", output_var="s", source_var="s",
                              target_var="s_in", op="qif_op", spike_var="spike", spike_def="v",  clear=True,
                              verbose=False, dtype=torch.float32)
@@ -73,11 +72,10 @@ def test_4_1_init():
     assert isinstance(net5.rnn_layer, SRNNLayer)
     assert isinstance(net1[0], RNNLayer)
     assert net2.rnn_layer == rnn
-    assert len(net1._var_map) == 0
-    assert len(net3._var_map) == 2
+    assert len(net3._var_map) - len(net1._var_map) == 2
     assert len(net1.rnn_layer.train_params) == 0
     assert len(net4.rnn_layer.train_params) == 1
-    assert list(net4.rnn_layer.record(["li_op/u"]))
+    assert net4["v"].shape[0] == n
     assert net1.rnn_layer.y.dtype == torch.float64
     assert net5.rnn_layer.y.dtype == torch.float32
 
@@ -280,7 +278,7 @@ def test_4_5_parameters():
                              target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
     net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
                              target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
-                             train_params=['weight', 'li_op/tau'])
+                             train_params=['weights', 'li_op/tau'])
 
     # test number of parameters
     assert len(list(net1.parameters())) == 0
@@ -327,27 +325,27 @@ def test_4_6_simulation():
                              target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
     net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
                              target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
-                             record_vars=['li_op/u'])
+                             record_vars=['li_op/v'])
     net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
                              target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
-                             record_vars=['li_op/u']
+                             record_vars=['li_op/v']
                              )
     net3.compile()
 
     # run simulations
     res1 = net1.run(inputs=x, sampling_steps=2, verbose=False)
-    res2 = net2.run(inputs=x, record_output=False, record_vars=[('li_op/u', False)], verbose=False)
+    res2 = net2.run(inputs=x, record_output=False, record_vars=[('li_op/v', False)], verbose=False)
     res3, res4 = [], []
     for step in range(steps):
         out = net3.forward(x[step, :])
         if step % 2 == 0:
             res3.append(out.detach().numpy())
-        res4.append(list(net3.rnn_layer.record(['li_op/u']))[0].detach().numpy())
+        res4.append(net3['li_op/v'].detach().numpy())
 
     # these tests should pass
     for r1, r2 in zip(res1['out'], res3):
         assert np.mean(np.abs(r1 - r2)) == pytest.approx(0, rel=accuracy, abs=accuracy)
-    for r1, r2 in zip(res2['li_op/u'], res4):
+    for r1, r2 in zip(res2['li_op/v'], res4):
         assert np.mean(np.abs(r1 - r2)) == pytest.approx(0, rel=accuracy, abs=accuracy)
 
 

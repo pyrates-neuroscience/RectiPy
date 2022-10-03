@@ -1,10 +1,20 @@
 Changelog
 =========
 
-0.5
+0.6
 ---
 
-.. _section-1:
+0.6.0
+~~~~~
+
+- added use example for the LIF neuron model
+- new variable views available on the `rectipy.Network` and `rectipy.rnn_layer.RNNLayer` classes
+- :code:`Network.__getitem__()` and :code:`RNNLayer.__getitem__()` allow to directly access parameters and variables of the `RNNLayer` instance
+- integrated the new variable views into the documentation and testing suite
+- simplified code for model definitions based on the new variable views
+
+0.5
+---
 
 0.5.2
 ~~~~~
@@ -43,12 +53,8 @@ Changelog
 -  improved test library with more extensive testing of ``RNNLayer`` and
    ``Network`` functionalities
 
-.. _section-2:
-
 0.4
 ---
-
-.. _section-3:
 
 0.4.1
 ~~~~~
@@ -60,8 +66,6 @@ Changelog
 -  improved integration of PyRates into RectiPy, by making sure that all
    PyRates caches are cleared, even if building the network functions
    fails due to erroneous user inputs
-
-.. _section-4:
 
 0.4.0
 ~~~~~
@@ -80,12 +84,8 @@ Changelog
 -  debugged issues with in-place operations and autograd
 -  added a new example for parameter fitting within the RNN layer
 
-.. _section-5:
-
 0.3
 ---
-
-.. _section-6:
 
 0.3.1
 ~~~~~
@@ -96,8 +96,6 @@ Changelog
    layer
 -  improved integration of pyrates functions into rnn layer
 
-.. _section-7:
-
 0.3.0
 ~~~~~
 
@@ -107,12 +105,8 @@ Changelog
 -  added possibility of making an optimizer step only every ``x``
    training steps (gradients will accumulate over these steps)
 
-.. _section-8:
-
 0.2
 ---
-
-.. _section-9:
 
 0.2.0
 ~~~~~
@@ -130,20 +124,14 @@ Changelog
 -  ensured that the activation functions of the ``OutputLayer`` are
    always applied to the first dimension of the outputs
 
-.. _section-10:
-
 0.1
 ---
-
-.. _section-11:
 
 0.1.5
 ~~~~~
 
 -  ensured that state variable indices in RNN layer use correct data
    type (``torch.int64``)
-
-.. _section-12:
 
 0.1.4
 ~~~~~
@@ -154,8 +142,6 @@ Changelog
 -  added keyword arguments to the ``OutputLayer.__init__()`` that are
    passed on to ``torch.nn.Linear`` if ``trainable=True``
 
-.. _section-13:
-
 0.1.3
 ~~~~~
 
@@ -164,8 +150,6 @@ Changelog
 -  added automated execution of all tests via CircleCI upon pushing to
    github
 -  added ``pytest`` to the requirements
-
-.. _section-14:
 
 0.1.2
 ~~~~~
@@ -179,16 +163,12 @@ Changelog
 -  added a public property ``Network.model`` that provides read access
    to the pytorch model of the network
 
-.. _section-15:
-
 0.1.1
 ~~~~~
 
 -  added automated pypi releases
 -  added github workflow for pypi releases
 -  updated readme
-
-.. _section-16:
 
 0.1.0
 ~~~~~

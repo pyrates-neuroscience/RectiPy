@@ -4,6 +4,11 @@ Changelog
 0.7
 ---
 
+0.7.1
+~~~~~
+
+- added a use example for rectipy-torch integration
+
 0.7.0
 ~~~~~
 

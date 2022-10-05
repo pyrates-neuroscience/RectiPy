@@ -108,3 +108,35 @@ class Observer:
         ax.set_ylabel(y)
 
         return ax
+
+    def matshow(self, v: str, ax: plt.Axes = None, **kwargs) -> plt.Axes:
+        """Create a 2D color plot of variable `v`.
+
+        Parameters
+        ----------
+        v
+            Name of the variable to be plotted.
+        ax
+            `matplotlib.pyplot.Axes` instance in which to plot.
+        kwargs
+            Additional keyword arguments for the `matplotlib.pyplot.imshow` call.
+
+        Returns
+        -------
+        plt.Axes
+            Instance of `matplotlib.pyplot.Axes` that contains the line plot.
+        """
+
+        if ax is None:
+            subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
+            _, ax = plt.subplots(**subplot_kwargs)
+
+        sig = np.asarray(self._recordings[v])
+
+        shrink = kwargs.pop("shrink", 0.6)
+        im = ax.imshow(sig.T, **kwargs)
+        plt.colorbar(im, ax=ax, shrink=shrink)
+        ax.set_xlabel('time')
+        ax.set_ylabel(v)
+
+        return ax

@@ -1,6 +1,18 @@
 Changelog
 =========
 
+0.7
+---
+
+0.7.0
+~~~~~
+
+- added visualization method `rectipy.observer.Observer.matshow` that allows to create 2D color-coded plots of multi-dimensional RNN state variables
+- simplified alteration of default parameter values during network initialization
+- added use example for training and testing via the `Network.train` and `Network.test` methods
+- added a global coupling constant `k` to the qif model template
+- improved docstrings
+
 0.6
 ---
 

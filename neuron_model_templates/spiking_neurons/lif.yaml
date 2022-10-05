@@ -18,8 +18,8 @@ lif_op:
     s: output(0.0)
     v: variable(0.0)
     tau_s: 0.5
-    s_in: input(0.0)
     spike: input(0.0)
+    s_in: input(0.0)
 
 # node templates
 ################

@@ -106,6 +106,11 @@ class Network:
                 var_dict[key] = add_op_name(op, var, new_vars)
             if train_params:
                 train_params = [add_op_name(op, p, new_vars) for p in train_params]
+            if "node_vars" in kwargs:
+                for key in kwargs["node_vars"].copy():
+                    if "/" not in key:
+                        val = kwargs["node_vars"].pop(key)
+                        kwargs["node_vars"][f"all/{op}/{key}"] = val
 
         # initialize rnn layer
         if spike_var is None and spike_def is None:
@@ -258,6 +263,9 @@ class Network:
             Device on which to deploy the network model.
         sampling_steps
             Number of training steps at which to record observables.
+        optimizer_steps
+            Number of training steps after which to perform an update of the trainable parameters based on the
+            accumulated gradients.
         verbose
             If true, the training progress will be displayed.
         kwargs

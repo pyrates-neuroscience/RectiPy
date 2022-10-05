@@ -8,12 +8,13 @@
 qif_op:
   base: OperatorTemplate
   equations:
-    - "v' = (v^2 + eta + I_ext)/tau + s_in"
+    - "v' = (v^2 + eta + I_ext)/tau + k*s_in"
     - "s' = -s/tau_s + spike"
   variables:
     s: output(0.0)
     v: variable(-2.0)
     tau: 1.0
+    k: 1.0
     tau_s: 0.5
     eta: -5.0
     I_ext: input(0.0)

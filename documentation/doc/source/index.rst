@@ -54,9 +54,10 @@ Content
 Reference
 ---------
 
-If you use RectiPy, please cite:
+If you use `RectiPY`, please cite the most recent release:
 
-`R. Gast, A. Kennedy (2022) https://github.com/pyrates-neuroscience/RectiPy`
+.. image:: https://zenodo.org/badge/523464500.svg
+   :target: https://zenodo.org/badge/latestdoi/523464500
 
 Contact
 -------

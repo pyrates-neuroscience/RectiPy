@@ -37,7 +37,7 @@ You can install optional (non-default) packages by specifying one or more option
 
 .. code-block:: bash
 
-   pip install pyrates[dev]
+   pip install rectipy[dev]
 
 
 Currently, the only available option is `dev` (includes `pytest` and `bump2version`).

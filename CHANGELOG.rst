@@ -8,6 +8,7 @@ Changelog
 ~~~~~
 
 - added a use example for rectipy-torch integration
+- minor debugging of readthedocs config
 
 0.7.0
 ~~~~~

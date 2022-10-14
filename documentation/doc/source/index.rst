@@ -62,7 +62,7 @@ If you use `RectiPY`, please cite the most recent release:
 Contact
 -------
 
-If you have questions, problems or suggestions regarding PyRates, please contact `Richard Gast <https://www.richardgast.me>`_.
+If you have questions, problems or suggestions regarding RectiPy, please contact `Richard Gast <https://www.richardgast.me>`_.
 
 Contribute
 ----------

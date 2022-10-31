@@ -85,7 +85,7 @@ html_theme_options = {
 }
 html_context = {}
 html_static_path = ['_static']
-html_short_title = 'PyRates'
+html_short_title = 'RectiPy'
 html_logo = '_static/img/rectipy_logo.png'
 html_show_sourcelink = True
 htmlhelp_basename = slug

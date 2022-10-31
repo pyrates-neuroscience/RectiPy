@@ -117,7 +117,7 @@ class RNNLayer(Module):
 
         # add variable updates
         if 'node_vars' in kwargs:
-            template.update_var(node_vars=kwargs.pop('node_vars', None))
+            template.update_var(node_vars=kwargs.pop('node_vars'))
 
         # generate rnn function
         func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False,

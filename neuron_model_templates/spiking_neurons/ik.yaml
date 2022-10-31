@@ -1,0 +1,54 @@
+%YAML 1.2
+---
+
+# operator templates
+####################
+
+# operator for Izhikevich neurons with exponentially decaying synaptic output
+ik_op:
+  base: OperatorTemplate
+  equations:
+    - "v' = (k*(v-v_r)*(v-v_theta) - u + I_ext + eta + g*s_in*(E_r - v)) / C"
+    - "u' = (b*(v-v_r) - u) / tau_u + kappa*spike"
+    - "s' = -s/tau_s + spike"
+  variables:
+    s: output(0.0)
+    v: variable(-60.0)
+    u: variable(0.0)
+    C: 100.0
+    k: 0.7
+    v_r: -60.0
+    v_theta: -40.0
+    eta: 0.0
+    g: 1.0
+    E_r: 0.0
+    b: -2.0
+    tau_u: 33.33
+    kappa: 10.0
+    tau_s: 6.0
+    I_ext: input(0.0)
+    spike: input(0.0)
+    s_in: input(0.0)
+
+# operator for Izhikevich neurons with exponentially decaying synaptic output
+iku_op:
+  base: ik_op
+  equations:
+    replace:
+      b*(v-v_r): b*(mean(v)-v_r)
+      kappa*spike: kappa*s_in
+
+# node templates
+################
+
+# IK neuron
+ik:
+  base: NodeTemplate
+  operators:
+    - ik_op
+
+# IK neuron with global recovery variable
+iku:
+  base: NodeTemplate
+  operators:
+    - iku_op

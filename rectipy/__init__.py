@@ -32,5 +32,5 @@ __status__ = "Development"
 __version__ = "0.7.0"
 
 from .network import Network, Observer
-from .utility import random_connectivity, circular_connectivity, input_connections
+from .utility import random_connectivity, circular_connectivity, input_connections, normalize
 from .utility import wta_score, readout

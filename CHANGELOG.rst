@@ -1,13 +1,19 @@
 Changelog
 =========
 
-0.7
+0.8
 ---
 
-0.7.1
+0.8.0
 ~~~~~
 
 - added a use example for rectipy-torch integration
+- added a function for matrix normalization to utility
+- added the izhikevich neuron model as a template
+- added an izhikevich neuron with global recovery variable as a template
+
+0.7
+---
 
 0.7.0
 ~~~~~

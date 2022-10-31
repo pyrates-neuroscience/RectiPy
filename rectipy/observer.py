@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from typing import Iterable
+from pandas import DataFrame
 from .utility import retrieve_from_dict
 
 
@@ -40,13 +41,23 @@ class Observer:
         self._recordings["steps"] = []
 
     def __getitem__(self, item: str):
-        return self._recordings[item]
+        return DataFrame(index=self._recordings["steps"], data=self._recordings[item])
 
     @property
     def recorded_rnn_variables(self) -> list:
         """RNN state variables that are recorded by this `Observer` instance.
         """
         return self._state_vars
+
+    @property
+    def recordings(self):
+        columns = self._state_vars
+        if self._record_out:
+            columns.append("out")
+        if self._record_loss:
+            columns.append("loss")
+        data = np.asarray([self[v] for v in columns]).T
+        return DataFrame(index=self._recordings["step"], data=data, columns=columns)
 
     def record(self, step: int, output: torch.Tensor, loss: float, record_vars: Iterable[torch.Tensor]) -> None:
         """Performs a single recording steps.

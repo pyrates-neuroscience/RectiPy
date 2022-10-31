@@ -154,6 +154,48 @@ def input_connections(n: int, m: int, p: float, variance: float = 1.0, zero_mean
     return C
 
 
+def normalize(x: np.ndarray, mode: str = "minmax", row_wise: bool = False) -> np.ndarray:
+    """Normalization function for matrices.
+
+    Parameters
+    ----------
+    x
+        N x m matrix.
+    mode
+        Normalization mode. Can be one of the following options:
+        - 'minmax': Normalize such that the minimum of the data is 0 and the maximum is 1.
+        - 'zscore': Normalize data such that the mean is 0 and the standard deviation is 1.
+        - 'sum': Normalize such that the sum over the data equals 1.
+    row_wise
+        If true, normalization will be applied independently for each row of `x`.
+
+    Returns
+    -------
+    np.ndarray
+        N x m matrix, normalized.
+    """
+    if row_wise:
+        for i in range(x.shape[0]):
+            x[i, :] = normalize(x[i, :], mode=mode, row_wise=False)
+    else:
+        x_tmp = x.flatten()
+        if mode == "minmax":
+            x -= np.min(x_tmp)
+            max_val = np.max(x_tmp)
+            if max_val > 0:
+                x /= max_val
+        elif mode == "zscore":
+            x -= np.mean(x_tmp)
+            std = np.std(x_tmp)
+            if std > 0:
+                x /= std
+        elif mode == "sum":
+            x /= np.sum(x_tmp)
+        else:
+            raise ValueError(f"Invalid normalization mode: {mode}.")
+    return x
+
+
 # function for optimization
 ###########################
 

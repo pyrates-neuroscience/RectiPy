@@ -36,7 +36,7 @@ iku_op:
   equations:
     replace:
       b*(v-v_r): b*(mean(v)-v_r)
-      kappa*spike: kappa*s_in
+      kappa*spike: kappa*mean(spike)
 
 # node templates
 ################

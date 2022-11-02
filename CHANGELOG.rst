@@ -4,6 +4,12 @@ Changelog
 0.8
 ---
 
+0.8.1
+~~~~~
+
+- debugged global recovery variable definition of izhikevich model template
+- debugged simulation test
+
 0.8.0
 ~~~~~
 

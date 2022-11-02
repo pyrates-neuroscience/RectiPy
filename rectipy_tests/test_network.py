@@ -327,7 +327,7 @@ def test_4_6_simulation():
                              target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
                              record_vars=['li_op/v'])
     net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
+                             target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float64,
                              record_vars=['li_op/v']
                              )
     net3.compile()
@@ -343,10 +343,10 @@ def test_4_6_simulation():
         res4.append(net3['li_op/v'].detach().numpy())
 
     # these tests should pass
-    for r1, r2 in zip(res1['out'], res3):
-        assert np.mean(np.abs(r1 - r2)) == pytest.approx(0, rel=accuracy, abs=accuracy)
-    for r1, r2 in zip(res2['li_op/v'], res4):
-        assert np.mean(np.abs(r1 - r2)) == pytest.approx(0, rel=accuracy, abs=accuracy)
+    x, y = res1["out"].values.flatten(), np.asarray(res3).flatten()
+    assert np.mean(np.abs(x - y)) == pytest.approx(0, rel=accuracy, abs=accuracy)
+    x, y = res2["li_op/v"].values.flatten(), np.asarray(res4).flatten()
+    assert np.mean(np.abs(x - y)) == pytest.approx(0, rel=accuracy, abs=accuracy)
 
 
 def test_4_7_optimization():

@@ -222,7 +222,8 @@ def wta_score(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.mean(z))
 
 
-def readout(X: np.ndarray, y: np.ndarray, k: int = 1, verbose: bool = True, **kwargs) -> tuple:
+def readout(X: np.ndarray, y: np.ndarray, k: int = 1, train_split: int = None, verbose: bool = True, **kwargs
+            ) -> dict:
     """Uses Ridge regression to find a set of coefficients `a` that minimizes `y - aX`.
 
     Parameters
@@ -234,6 +235,9 @@ def readout(X: np.ndarray, y: np.ndarray, k: int = 1, verbose: bool = True, **kw
     k
         If larger 1, `k` splits into training and testing data will be performed, and for each of these splits a ridge
         regression will be calculated.
+    train_split
+        An integer that splits `X` and `y` into a training and a test data set. Must be smaller than the size of the
+        first dimension of `X` and `y`.
     verbose
         If true, updates about the regression procedure will be displayed.
     kwargs
@@ -241,38 +245,76 @@ def readout(X: np.ndarray, y: np.ndarray, k: int = 1, verbose: bool = True, **kw
 
     Returns
     -------
-    tuple
-        Average loss on training data, and readout weights.
+    dict
+        Contains entries with the following keys:
+         - 'train_score': R2 score training data
+         - 'test_score': R2 score on test data
+         - 'readout_weights': Regression coefficients
+         - 'readout_bias': Regression bias term
+         - 'prediction': Prediction of the fitted classifier for the testing data
+         - 'target': Prediction target, i.e. the testing data
     """
 
     # imports
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import StratifiedKFold
 
+    # split into training and test data set
+    if train_split:
+        X, X_t = X[:train_split], X[train_split:]
+        y, y_t = y[:train_split], y[train_split:]
+
     # perform ridge regression
     if k > 1:
         splitter = StratifiedKFold(n_splits=k)
-        scores, coefs = [], []
+        scores, coefs, intercepts = [], [], []
         for i, (train_idx, test_idx) in enumerate(splitter.split(X=X, y=y)):
             classifier = Ridge(**kwargs)
             classifier.fit(X[train_idx], y[train_idx])
             scores.append(classifier.score(X=X[test_idx], y=y[test_idx]))
             coefs.append(classifier.coef_)
+            intercepts.append(classifier.intercept_)
     else:
         classifier = Ridge(**kwargs)
         classifier.fit(X, y)
         scores = [classifier.score(X=X, y=y)]
         coefs = [classifier.coef_]
+        intercepts = [classifier.intercept_]
 
     # store readout weights
     w_out = np.mean(coefs, axis=0)
-    avg_score = np.mean(scores)
+    intercept = np.mean(intercepts, axis=0)
+    train_score = np.mean(scores)
 
     if verbose:
         print(f'Finished readout training.')
         if k > 1:
-            print(fr'Average, cross-validated $R^2$ score across {k} test folds: {avg_score}')
+            print(fr'Average, cross-validated $R^2$ score across {k} test folds: {train_score}')
         else:
-            print(fr'$R^2$ score on training data: {avg_score}')
+            print(fr'$R^2$ score on training data: {train_score}')
 
-    return avg_score, w_out
+    # store temporary results
+    res = {"train_score": train_score, "readout_weights": w_out, "readout_bias": intercept, "test_score": None,
+           "prediction": None, "target": None}
+
+    # perform testing
+    if train_split:
+
+        classifier = Ridge(**kwargs)
+        classifier.coef_ = w_out
+        classifier.intercept_ = intercept
+
+        res["test_score"] = classifier.score(X=X_t, y=y_t)
+        res["prediction"] = classifier.predict(X_t)
+        res["target"] = y_t
+
+        if verbose:
+            print(f'Finished readout training.')
+            print(fr"$R^2$ score on testing data: {res['test_score']}")
+
+    else:
+
+        res["prediction"] = classifier.predict(X)
+        res["target"] = y
+
+    return res

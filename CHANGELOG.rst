@@ -1,14 +1,20 @@
 Changelog
 =========
 
-0.8
+0.9
 ---
 
-0.8.1
+0.9.0
 ~~~~~
 
 - debugged global recovery variable definition of izhikevich model template
 - debugged simulation test
+- added a new `rectipy.Network` initialization method: `Network.from_template` that allows to intialize `Network`
+  instances from `pyrates.CircuitTemplate` instances. This way, the user has full control over the construction of the
+  network template.
+
+0.8
+---
 
 0.8.0
 ~~~~~

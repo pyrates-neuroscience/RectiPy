@@ -4,6 +4,11 @@ Changelog
 0.9
 ---
 
+0.9.1
+~~~~~
+
+- minor bug fix of faulty normalization of input weights in `utility.input_connections`
+
 0.9.0
 ~~~~~
 

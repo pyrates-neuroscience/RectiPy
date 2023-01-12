@@ -134,8 +134,8 @@ def test_4_2_input_layer():
     assert isinstance(net1.input_layer, LinearStatic)
     assert isinstance(net3.input_layer, Linear)
     assert isinstance(net1[0], LinearStatic)
-    assert tuple(net2.input_layer.weight.shape) == (n, m)
-    assert net4.input_layer.weight.dtype == torch.float64
+    assert tuple(net2.input_layer.weights.shape) == (n, m)
+    assert net4.input_layer.weights.dtype == torch.float64
     assert tuple(net1.forward(x).shape) == (n,)
     net1.remove_input_layer()
     net1.compile()
@@ -201,7 +201,7 @@ def test_4_3_output_layer():
     assert len(list(net1.parameters())) == 0
     assert len(list(net3.parameters())) == 2
     assert len(list(net4.parameters())) == 1
-    assert net5.output_layer[0].weight.dtype == torch.float32
+    assert net5.output_layer[0].weights.dtype == torch.float32
     assert tuple(net1.forward(x).shape) == (k,)
     assert np.mean(np.abs(net1.forward(x).detach().numpy() - net2.forward(x).detach().numpy())) > 0.0
     net1.remove_output_layer()

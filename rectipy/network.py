@@ -16,7 +16,7 @@ class Network:
     output layers.
     """
 
-    def __init__(self, n: int, rnn_layer: Union[RNNLayer, SRNNLayer], var_map: dict = None):
+    def __init__(self, n: int, rnn_layer: Union[RNNLayer, SRNNLayer], var_map: dict = None, device: str = "cpu"):
         """Instantiates network with a single RNN layer.
 
         Parameters
@@ -28,6 +28,9 @@ class Network:
         var_map
             Optional dictionary, where keys are variable names as supplied by the user, and values are variable names
             that contain the operator name as well.
+        device
+            Device on which to deploy the `torch.nn.Sequential` instance.
+
         """
 
         self.n = n
@@ -36,7 +39,8 @@ class Network:
         self.output_layer = None
         self._var_map = var_map if var_map else {}
         self._model = None
-
+        self.device = device
+        
     def __getitem__(self, item: Union[int, str]):
         try:
             return self.rnn_layer[item]
@@ -167,7 +171,7 @@ class Network:
         input_layer = InputLayer(self.n, m, weights, trainable=trainable, dtype=dtype)
 
         # add layer to model
-        self.input_layer = input_layer
+        self.input_layer = input_layer.to(self.device)
 
         # return layer
         return self.input_layer
@@ -208,7 +212,7 @@ class Network:
                                    dtype=dtype, **kwargs)
 
         # add layer to model
-        self.output_layer = output_layer
+        self.output_layer = output_layer.to(self.device)
 
         # return layer
         return self.output_layer
@@ -438,14 +442,12 @@ class Network:
 
         return obs
 
-    def compile(self, device: str = None) -> Sequential:
+    def compile(self) -> Sequential:
         """Connects the `InputLayer`, `RNNLayer` and `OutputLayer` of this model via a `torch.nn.Sequential` instance.
         Input and output layers are optional.
 
         Parameters
         ----------
-        device
-            Device on which to deploy the `torch.nn.Sequential` instance.
 
         Returns
         -------
@@ -457,15 +459,13 @@ class Network:
         rnn_layer = self._get_layer(self.rnn_layer)
         layers = in_layer + rnn_layer + out_layer
         model = Sequential(*layers)
-        self._model = model
+        self._model = model.to(self.device)
         if not list(self.rnn_layer.parameters()):
             self.rnn_layer.detach()
         else:
             for p in self.parameters():
                 p.requires_grad = True
-        if device is not None:
-            model.to(device)
-        return model
+        return self._model
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward method as implemented for any `torch.Module`.

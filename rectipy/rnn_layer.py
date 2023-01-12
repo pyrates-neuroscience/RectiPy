@@ -3,24 +3,27 @@ import torch
 from torch.nn import Module
 from typing import Callable, Union, Iterator
 import numpy as np
+from .utility import to_device
 
 
 class RNNLayer(Module):
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict, dt: float = 1e-3,
-                 dtype: torch.dtype = torch.float64, train_params: list = None, **kwargs):
+                 dtype: torch.dtype = torch.float64, train_params: list = None, device: str = "cpu", **kwargs):
 
         super().__init__()
-        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad)
+        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad,
+                              device=device)
         self.dt = dt
         self.func = rnn_func
-        self._args = list(rnn_args[1:])
+        self._args = [to_device(arg, device) for arg in rnn_args[1:]]
         self._var_map = var_map
         self._param_map = param_map
-        self._start = torch.tensor(self._var_map["out"][0], dtype=torch.int64)
-        self._stop = torch.tensor(self._var_map["out"][-1], dtype=torch.int64)
+        self._start = torch.tensor(self._var_map["out"][0], dtype=torch.int64, device=device)
+        self._stop = torch.tensor(self._var_map["out"][-1], dtype=torch.int64, device=device)
         self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
         self._inp_ext = self._param_map["in"]
+        self.device = device
 
     def __getitem__(self, item):
         try:
@@ -90,12 +93,13 @@ class RNNLayer(Module):
         self._args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self._args]
 
     def reset(self, y: np.ndarray, idx: np.ndarray = None):
+        # TODO: remove this method?
         if idx is None:
-            self.y = torch.tensor(y, dtype=self.y.dtype)
+            self.y = torch.tensor(y, dtype=self.y.dtype, device=self.device)
         else:
             y_new = self.y.clone()
             y_new[torch.tensor(idx, dtype=torch.long)] = torch.tensor(y, dtype=y_new.dtype)
-            self.y = y_new
+            self.y = to_device(y_new, self.device)
 
     @classmethod
     def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -157,14 +161,15 @@ class SRNNLayer(RNNLayer):
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
                  spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
-                 dtype: torch.dtype = torch.float64, train_params: list = None, **kwargs):
+                 dtype: torch.dtype = torch.float64, train_params: list = None, device: str = None, **kwargs):
 
-        super().__init__(rnn_func, rnn_args, var_map, param_map, dt=dt, dtype=dtype, train_params=train_params)
+        super().__init__(rnn_func, rnn_args, var_map, param_map, dt=dt, dtype=dtype, train_params=train_params,
+                         device=device)
         self._spike_var = self._param_map['spike_var']
         self._thresh = spike_threshold
         self._reset = spike_reset
-        self._spike_start = torch.tensor(self._var_map['spike_def'][0], dtype=torch.int64)
-        self._spike_stop = torch.tensor(self._var_map['spike_def'][-1], dtype=torch.int64)
+        self._spike_start = torch.tensor(self._var_map['spike_def'][0], dtype=torch.int64, device=self.device)
+        self._spike_stop = torch.tensor(self._var_map['spike_def'][-1], dtype=torch.int64, device=self.device)
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,

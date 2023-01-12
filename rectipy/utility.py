@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from scipy.stats import rv_discrete, bernoulli
 from typing import Union
 
@@ -60,6 +61,13 @@ def _wrap(idxs: np.ndarray, N: int) -> np.ndarray:
     idxs[idxs < 0] = N+idxs[idxs < 0]
     idxs[idxs >= N] = idxs[idxs >= N] - N
     return idxs
+
+
+def to_device(x: torch.Tensor, device: str) -> torch.Tensor:
+    try:
+        return x.to(device)
+    except AttributeError:
+        return x
 
 
 # connectivity generation functions

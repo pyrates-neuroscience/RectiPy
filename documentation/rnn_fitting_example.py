@@ -7,11 +7,18 @@ import torch
 # preparations
 ##############
 
+# check CUDA devices
+print(f"CUDA available: {torch.cuda.is_available()}")
+dev_id = torch.cuda.current_device()
+dev_name = torch.cuda.get_device_name(dev_id)
+print(f"CUDA device: {dev_name}, ID: {dev_id}")
+device = "cpu"
+
 # model parameters
 node = "model_templates.base_templates.tanh_node"
-N = 5
-J = np.load("C.npy")  #np.random.uniform(low=-1.0, high=1.0, size=(N, N))
-D = np.load("D.npy")  #np.random.choice([1.0, 2.0, 3.0], size=(N, N))
+N = 10
+J = np.random.uniform(low=-1.0, high=1.0, size=(N, N))
+D = np.random.choice([1.0, 2.0, 3.0], size=(N, N))
 #np.save("C.npy", C)
 #np.save("D.npy", D)
 S = D*0.3
@@ -20,24 +27,26 @@ tau0 = np.random.uniform(0.1, 10.0)
 u_idx = np.arange(0, N)
 
 # initialize networks
-target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=J,
+target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J,
                                edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
-                               input_var="li_op/I_ext", output_var="li_op/u", clear=True, float_precision="float64",
-                               file_name='target_net', node_vars={'all/li_op/u': np.random.randn(N)})
+                               input_var="li_op/I_ext", output_var="li_op/v", clear=True, float_precision="float64",
+                               file_name='target_net', node_vars={'all/li_op/v': np.random.randn(N)}, device=device)
 
-learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh_node", weights=J,
+learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J,
                                  edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
-                                 input_var="li_op/I_ext", output_var="li_op/u", clear=False,
+                                 input_var="li_op/I_ext", output_var="li_op/v", clear=False,
                                  train_params=['li_op/k', 'li_op/tau'], float_precision="float64",
                                  node_vars={"all/li_op/k": k0, "all/li_op/tau": tau0},
-                                 file_name='learning_net')
+                                 file_name='learning_net', device=device)
 
 # compile networks
+
 target_net.compile()
 learning_net.compile()
+print(torch.cuda.memory_allocated())
 
 # extract initial value vector for later state vector resets
-y0 = target_net.rnn_layer.y.clone().detach().numpy()
+y0 = target_net.rnn_layer.y.clone().detach().cpu().numpy()
 
 # create target data
 ####################
@@ -67,7 +76,7 @@ for step in range(epoch_steps):
     targets.append(target)
 print("Finished.")
 
-plt.plot([t.detach().numpy() for t in targets])
+plt.plot([t.detach().cpu().numpy() for t in targets])
 plt.show()
 
 # optimization

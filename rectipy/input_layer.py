@@ -11,14 +11,17 @@ class LinearStatic(Module):
         if not isinstance(weights, torch.Tensor):
             raise TypeError("Weights provided to the input layer have to be of type `torch.Tensor`.")
         weights.detach()
-        self.weight = weights
+        self.weights = weights
 
     def forward(self, x):
-        return self.weight @ x
+        return self.weights @ x
 
     def parameters(self, recurse: bool = True) -> Iterator:
         for p in []:
             yield p
+
+    def to(self, device: str, **kwargs):
+        self.weights.to(device)
 
 
 class InputLayer(Linear, LinearStatic):
@@ -52,4 +55,3 @@ class InputLayer(Linear, LinearStatic):
     #
     # def parameters(self, recurse: bool = True) -> Iterator:
     #     return self.layer.parameters(recurse=recurse)
-

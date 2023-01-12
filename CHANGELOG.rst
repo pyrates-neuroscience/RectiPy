@@ -9,6 +9,7 @@ Changelog
 
 - debugged global recovery variable definition of izhikevich model template
 - debugged simulation test
+- resolved issues with the model deployment on a certain device. Instead of providing the device ("cpu" or "cuda") to the `Network.compile` method, it is to be provided during initialization now
 
 0.8.0
 ~~~~~

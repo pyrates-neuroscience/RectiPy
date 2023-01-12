@@ -2,6 +2,7 @@ import torch
 from torch.nn import Module, Linear
 from typing import Iterator
 import numpy as np
+from .utility import to_device
 
 
 class LinearStatic(Module):
@@ -20,14 +21,15 @@ class LinearStatic(Module):
         for p in []:
             yield p
 
-    def to(self, device: str, **kwargs):
-        self.weights.to(device)
+    def to(self, device: str, **kwargs) -> Module:
+        self.weights = to_device(self.weights, device)
+        return self
 
 
 class InputLayer(Linear, LinearStatic):
 
     def __new__(cls, n: int, m: int, weights: np.ndarray = None, trainable: bool = False,
-                 dtype: torch.dtype = torch.float64, **kwargs):
+                dtype: torch.dtype = torch.float64, **kwargs):
         if trainable:
             return cls._init_linear(m, n, dtype, kwargs.pop('bias', False))
         else:

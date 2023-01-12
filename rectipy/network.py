@@ -171,8 +171,7 @@ class Network:
         """
 
         # add operator key to variable names
-        var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'in_net': spike_var,
-                    'out': output_var, 'spike': spike_def}
+        var_dict = {'in_ext': input_var, 'in_net': spike_var, 'out': output_var, 'spike': spike_def}
         new_vars = {}
         if op is not None:
             for key, var in var_dict.copy().items():
@@ -200,7 +199,7 @@ class Network:
             add_op_name(op, v, new_vars)
 
         # initialize model
-        return cls(weights.shape[0], rnn_layer, var_map=new_vars)
+        return cls(len(template.nodes), rnn_layer, var_map=new_vars)
 
     @property
     def model(self) -> Sequential:
@@ -356,7 +355,7 @@ class Network:
                              '`targets` agree in the first dimension.')
 
         # set up model
-        model = self.compile(device) if self._model is None else self._model
+        model = self.compile() if self._model is None else self._model
 
         # initialize loss function
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
@@ -427,7 +426,7 @@ class Network:
         target_tensor = torch.tensor(targets)
 
         # set up model
-        model = self.compile(device) if self._model is None else self._model
+        model = self.compile() if self._model is None else self._model
 
         # initialize loss function
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
@@ -489,7 +488,7 @@ class Network:
         inp_tensor = torch.tensor(inputs)
 
         # initialize model from layers
-        model = self.compile(device) if self._model is None else self._model
+        model = self.compile() if self._model is None else self._model
 
         # initialize observer
         obs = Observer(dt=self.rnn_layer.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)

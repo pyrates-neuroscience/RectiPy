@@ -9,13 +9,14 @@ Changelog
 
 - minor bug fix of faulty normalization of input weights in `utility.input_connections`
 - resolved issues with the model deployment on a certain device. Instead of providing the device ("cpu" or "cuda") to the `Network.compile` method, it is to be provided during initialization now
+- debugged network initialization method `Network.from_template`
 
 0.9.0
 ~~~~~
 
 - debugged global recovery variable definition of izhikevich model template
 - debugged simulation test
-- added a new `rectipy.Network` initialization method: `Network.from_template` that allows to intialize `Network`
+- added a new `rectipy.Network` initialization method: `Network.from_template` that allows to initialize `Network`
   instances from `pyrates.CircuitTemplate` instances. This way, the user has full control over the construction of the
   network template.
 

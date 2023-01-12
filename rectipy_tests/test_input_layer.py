@@ -75,10 +75,10 @@ def test_1_2_input_layer():
     # these tests should pass
     assert isinstance(in1, LinearStatic)
     assert isinstance(in5, Linear)
-    assert in1.weights.shape[0] == in2.weight.shape[1]
-    assert torch.sum(in3.weight - weights).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
-    assert in3.weight.dtype == torch.float64
-    assert in4.weight.dtype == torch.float32
+    assert in1.weights.shape[0] == in2.weights.shape[1]
+    assert torch.sum(in3.weights - weights).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
+    assert in3.weights.dtype == torch.float64
+    assert in4.weights.dtype == torch.float32
     assert np.abs(torch.sum(in5.forward(x) - in3.forward(x)).detach().numpy()) > 0.0
     assert len(list(in5.parameters())) - len(list(in4.parameters())) == 1
 

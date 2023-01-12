@@ -6,7 +6,7 @@ from .input_layer import InputLayer
 from .output_layer import OutputLayer
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
-from pyrates import NodeTemplate
+from pyrates import NodeTemplate, CircuitTemplate
 import numpy as np
 from time import perf_counter
 
@@ -122,12 +122,76 @@ class Network:
                                            var_dict['out'], train_params=train_params, **kwargs)
         elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
-                             'name of the variable that spikes should be stored in (`spike_def`) as well as the '
+                             'name of the variable that spikes should be stored in (`spike_var`) as well as the '
                              'name of the variable that is used to define spikes (`spike_def`).')
         else:
             rnn_layer = SRNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
                                             var_dict['out'], spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
                                             train_params=train_params, **kwargs)
+
+        # remember operator mapping for each RNN layer parameter and state variable
+        for p in rnn_layer.parameter_names:
+            add_op_name(op, p, new_vars)
+        for v in rnn_layer.variable_names:
+            add_op_name(op, v, new_vars)
+
+        # initialize model
+        return cls(weights.shape[0], rnn_layer, var_map=new_vars)
+
+    @classmethod
+    def from_template(cls, template: CircuitTemplate, input_var: str, output_var: str, spike_var: str = None,
+                      spike_def: str = None, op: str = None, train_params: list = None, **kwargs):
+        """Creates a `Network` instance from a YAML template that defines a single RNN node and additional information
+        about which nodes in the network should be connected to each other.
+
+        Parameters
+        ----------
+        template
+            Instance of a `pyrates.CircuitTemplate`. Will not be altered any further.
+        input_var
+            Name of the parameter in the node equations that input from input layers should be projected to.
+        output_var
+            Name of the variable in the node equations that should be used as output of the RNN layer.
+        spike_var
+            Name of the parameter in the node equations that recurrent input from the RNN layer should be projected to.
+        spike_def
+            Name of the variable in the node equations that should be used to determine spikes in the network.
+        op
+            Name of the operator in which all the above variables can be found. If not provided, it is assumed that
+            the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
+        train_params
+            Names of all RNN parameters that should be made available for optimization.
+        kwargs
+            Additional keyword arguments provided to the `RNNLayer` (or `SRNNLayer` in case of spiking neurons).
+
+        Returns
+        -------
+        Network
+            Instance of `Network`.
+        """
+
+        # add operator key to variable names
+        var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'in_net': spike_var,
+                    'out': output_var, 'spike': spike_def}
+        new_vars = {}
+        if op is not None:
+            for key, var in var_dict.copy().items():
+                var_dict[key] = add_op_name(op, var, new_vars)
+            if train_params:
+                train_params = [add_op_name(op, p, new_vars) for p in train_params]
+
+        # initialize rnn layer
+        if spike_var is None and spike_def is None:
+            rnn_layer = RNNLayer.from_template(template, var_dict['in_ext'], var_dict['out'], train_params=train_params,
+                                               **kwargs)
+        elif spike_var is None or spike_def is None:
+            raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
+                             'name of the variable that spikes should be stored in (`spike_var`) as well as the '
+                             'name of the variable that is used to define spikes (`spike_def`).')
+        else:
+            rnn_layer = SRNNLayer.from_template(template, var_dict['in_ext'], var_dict['out'],
+                                                spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
+                                                train_params=train_params, **kwargs)
 
         # remember operator mapping for each RNN layer parameter and state variable
         for p in rnn_layer.parameter_names:

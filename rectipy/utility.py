@@ -158,7 +158,7 @@ def input_connections(n: int, m: int, p: float, variance: float = 1.0, zero_mean
         rows = np.argwhere(C_tmp[:, col] > 0).squeeze()
         C[rows, col] = np.random.randn(rows.shape[0])*variance
         if zero_mean:
-            C[rows, col] -= np.sum(C[rows, col])
+            C[rows, col] -= np.sum(C[:, col])/len(rows)
     return C
 
 

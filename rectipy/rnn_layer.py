@@ -77,6 +77,39 @@ class RNNLayer(Module):
             clear(template)
         return cls(func, args, var_map, param_map, dt=dt, train_params=train_params, dtype=dtype, **kwargs)
 
+    @classmethod
+    def from_template(cls, template: Union[str, CircuitTemplate], input_var: str, output_var: str,
+                      train_params: list = None, **kwargs):
+
+        # extract keyword arguments for initialization
+        dt = kwargs.pop('dt', 1e-3)
+        clear_template = kwargs.pop('clear', True)
+        dtype = kwargs.pop('dtype', torch.float64)
+        kwargs['float_precision'] = str(dtype).split('.')[-1]
+        param_mapping = kwargs.pop("param_mapping", {})
+        var_mapping = kwargs.pop("var_mapping", {})
+        var_mapping["out"] = output_var
+
+        # generate rnn template and function
+        try:
+            func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False,
+                                                                        inplace_vectorfield=False, **kwargs)
+        except Exception as e:
+            clear_frontend_caches()
+            raise e
+
+        # get parameter and variable indices
+        param_map = cls._get_param_indices(template, keys[1:])
+        param_map = _remove_node_from_dict_keys(param_map)
+        for key, var in param_mapping.items():
+            param_map[key] = param_map[var]
+        var_map.update(cls._get_var_indices(template, var_mapping))
+        var_map = _remove_node_from_dict_keys(var_map)
+
+        if clear_template:
+            clear(template)
+        return cls(func, args, var_map, param_map, dt=dt, train_params=train_params, dtype=dtype, **kwargs)
+
     def forward(self, x):
         self._args[self._inp_ext] = x
         y_old = self.y.detach()
@@ -182,6 +215,15 @@ class SRNNLayer(RNNLayer):
 
         return super().from_yaml(node, weights, source_var, target_var, input_var, output_var,
                                  train_params=train_params, **kwargs)
+
+    @classmethod
+    def from_template(cls, template: Union[str, CircuitTemplate], input_var: str, output_var: str,
+                      spike_var: str = 'spike', spike_def: str = 'v', train_params: list = None, **kwargs):
+        # extract keyword arguments for initialization
+        kwargs["param_mapping"] = {"spike_var": spike_var}
+        kwargs["var_mapping"] = {"spike_def": spike_def}
+
+        return super().from_yaml(template, input_var, output_var, train_params=train_params, **kwargs)
 
     def forward(self, x):
         spikes = self.y[self._spike_start:self._spike_stop] >= self._thresh

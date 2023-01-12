@@ -4,7 +4,7 @@
 # operator templates
 ####################
 
-# operator for Izhikevich neurons with exponentially decaying synaptic output
+# operator for Izhikevich neurons
 ik_op:
   base: OperatorTemplate
   equations:
@@ -30,7 +30,7 @@ ik_op:
     spike: input(0.0)
     s_in: input(0.0)
 
-# operator for Izhikevich neurons with exponentially decaying synaptic output
+# operator for Izhikevich neurons with global recovery variable
 iku_op:
   base: ik_op
   equations:

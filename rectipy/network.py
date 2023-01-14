@@ -29,7 +29,7 @@ class Network:
             Optional dictionary, where keys are variable names as supplied by the user, and values are variable names
             that contain the operator name as well.
         device
-            Device on which to deploy the `torch.nn.Sequential` instance.
+            Device on which to deploy the `Network` instance.
 
         """
 
@@ -62,7 +62,7 @@ class Network:
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
                   input_var: str, output_var: str, spike_var: str = None, spike_def: str = None, op: str = None,
-                  train_params: list = None, **kwargs):
+                  train_params: list = None, device: str = "cpu", **kwargs):
         """Creates a `Network` instance from a YAML template that defines a single RNN node and additional information
         about which nodes in the network should be connected to each other.
 
@@ -92,6 +92,8 @@ class Network:
             the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
         train_params
             Names of all RNN parameters that should be made available for optimization.
+        device
+            Device on which to deploy the `Network` instance.
         kwargs
             Additional keyword arguments provided to the `RNNLayer` (or `SRNNLayer` in case of spiking neurons).
 
@@ -119,7 +121,7 @@ class Network:
         # initialize rnn layer
         if spike_var is None and spike_def is None:
             rnn_layer = RNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
-                                           var_dict['out'], train_params=train_params, **kwargs)
+                                           var_dict['out'], train_params=train_params, device=device, **kwargs)
         elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
                              'name of the variable that spikes should be stored in (`spike_var`) as well as the '
@@ -127,7 +129,7 @@ class Network:
         else:
             rnn_layer = SRNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
                                             var_dict['out'], spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                            train_params=train_params, **kwargs)
+                                            train_params=train_params, device=device, **kwargs)
 
         # remember operator mapping for each RNN layer parameter and state variable
         for p in rnn_layer.parameter_names:
@@ -136,7 +138,7 @@ class Network:
             add_op_name(op, v, new_vars)
 
         # initialize model
-        return cls(weights.shape[0], rnn_layer, var_map=new_vars)
+        return cls(weights.shape[0], rnn_layer, var_map=new_vars, device=device)
 
     @classmethod
     def from_template(cls, template: CircuitTemplate, input_var: str, output_var: str, spike_var: str = None,
@@ -459,7 +461,7 @@ class Network:
 
         return obs, loss_total
 
-    def run(self, inputs: np.ndarray, device: str = 'cpu', sampling_steps: int = 1, verbose: bool = True, **kwargs
+    def run(self, inputs: np.ndarray, sampling_steps: int = 1, verbose: bool = True, **kwargs
             ) -> Observer:
         """Perform numerical integration of the input-driven network equations.
 
@@ -468,8 +470,6 @@ class Network:
         inputs
             `T x m` array of inputs fed to the model, where`T` is the number of integration steps and `m` is the number
              of input dimensions of the network.
-        device
-            Device on which to deploy the network model.
         sampling_steps
             Number of integration steps at which to record observables.
         verbose
@@ -485,7 +485,7 @@ class Network:
 
         # transform input into tensor
         steps = inputs.shape[0]
-        inp_tensor = torch.tensor(inputs)
+        inp_tensor = torch.tensor(inputs, device=self.device)
 
         # initialize model from layers
         model = self.compile() if self._model is None else self._model

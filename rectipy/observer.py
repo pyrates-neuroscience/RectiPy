@@ -80,10 +80,10 @@ class Observer:
         recs = self._recordings
         recs["steps"].append(step)
         for key, val, reduce in zip(self._state_vars, record_vars, self._reduce_vars):
-            v = val.detach().numpy()
+            v = val.detach().cpu().numpy()
             recs[key].append(np.mean(v) if reduce else v)
         if self._record_out:
-            recs['out'].append(output.detach().numpy())
+            recs['out'].append(output.detach().cpu().numpy())
         if self._record_loss:
             recs['loss'].append(loss)
 

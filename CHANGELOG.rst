@@ -4,6 +4,12 @@ Changelog
 0.9
 ---
 
+0.9.2
+~~~~~
+
+- cleaned some code after model deployment changes made in 0.9.1
+- debugged the `from_template` initialization methods
+
 0.9.1
 ~~~~~
 

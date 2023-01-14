@@ -79,7 +79,7 @@ class RNNLayer(Module):
 
     @classmethod
     def from_template(cls, template: Union[str, CircuitTemplate], input_var: str, output_var: str,
-                      train_params: list = None, **kwargs):
+                      train_params: list = None, device: str = "cpu", **kwargs):
 
         # extract keyword arguments for initialization
         dt = kwargs.pop('dt', 1e-3)
@@ -87,8 +87,8 @@ class RNNLayer(Module):
         dtype = kwargs.pop('dtype', torch.float64)
         kwargs['float_precision'] = str(dtype).split('.')[-1]
         param_mapping = kwargs.pop("param_mapping", {})
-        var_mapping = kwargs.pop("var_mapping", {})
-        var_mapping["out"] = output_var
+        var_map = kwargs.pop("var_mapping", {})
+        var_map["out"] = output_var
 
         # generate rnn template and function
         try:
@@ -103,12 +103,13 @@ class RNNLayer(Module):
         param_map = _remove_node_from_dict_keys(param_map)
         for key, var in param_mapping.items():
             param_map[key] = param_map[var]
-        var_map.update(cls._get_var_indices(template, var_mapping))
+        var_map.update(cls._get_var_indices(template, var_map))
         var_map = _remove_node_from_dict_keys(var_map)
 
         if clear_template:
             clear(template)
-        return cls(func, args, var_map, param_map, dt=dt, train_params=train_params, dtype=dtype, **kwargs)
+        return cls(func, args, var_map, param_map, dt=dt, train_params=train_params, dtype=dtype, device=device,
+                   **kwargs)
 
     def forward(self, x):
         self._args[self._inp_ext] = x
@@ -223,7 +224,7 @@ class SRNNLayer(RNNLayer):
         kwargs["param_mapping"] = {"spike_var": spike_var}
         kwargs["var_mapping"] = {"spike_def": spike_def}
 
-        return super().from_yaml(template, input_var, output_var, train_params=train_params, **kwargs)
+        return super().from_template(template, input_var, output_var, train_params=train_params, **kwargs)
 
     def forward(self, x):
         spikes = self.y[self._spike_start:self._spike_stop] >= self._thresh

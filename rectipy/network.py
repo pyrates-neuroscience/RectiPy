@@ -142,7 +142,7 @@ class Network:
 
     @classmethod
     def from_template(cls, template: CircuitTemplate, input_var: str, output_var: str, spike_var: str = None,
-                      spike_def: str = None, op: str = None, train_params: list = None, **kwargs):
+                      spike_def: str = None, op: str = None, train_params: list = None, device: str = "cpu", **kwargs):
         """Creates a `Network` instance from a YAML template that defines a single RNN node and additional information
         about which nodes in the network should be connected to each other.
 
@@ -163,6 +163,8 @@ class Network:
             the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
         train_params
             Names of all RNN parameters that should be made available for optimization.
+        device
+            Device on which to deploy the `Network` instance.
         kwargs
             Additional keyword arguments provided to the `RNNLayer` (or `SRNNLayer` in case of spiking neurons).
 
@@ -201,7 +203,7 @@ class Network:
             add_op_name(op, v, new_vars)
 
         # initialize model
-        return cls(len(template.nodes), rnn_layer, var_map=new_vars)
+        return cls(len(template.nodes), rnn_layer, var_map=new_vars, device=device)
 
     @property
     def model(self) -> Sequential:
@@ -293,8 +295,8 @@ class Network:
         self.output_layer = None
 
     def train(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
-              loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, device: str = None,
-              sampling_steps: int = 100, optimizer_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
+              loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
+              optimizer_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
         """Optimize model parameters such that the model output matches the provided targets as close as possible.
 
         Parameters
@@ -328,8 +330,6 @@ class Network:
             Additional keyword arguments provided to the initialization of the loss.
         lr
             Learning rate.
-        device
-            Device on which to deploy the network model.
         sampling_steps
             Number of training steps at which to record observables.
         optimizer_steps
@@ -389,7 +389,7 @@ class Network:
         return obs
 
     def test(self, inputs: np.ndarray, targets: np.ndarray, loss: str = 'mse', loss_kwargs: dict = None,
-             device: str = None, sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
+             sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
         """Test the model performance on a set of inputs and target outputs, with frozen model parameters.
 
         Parameters
@@ -405,8 +405,6 @@ class Network:
             for available options.
         loss_kwargs
             Additional keyword arguments provided to the initialization of the loss.
-        device
-            Device on which to deploy the network model.
         sampling_steps
             Number of testing steps at which to record observables.
         verbose

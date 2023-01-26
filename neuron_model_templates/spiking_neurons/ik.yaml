@@ -45,27 +45,27 @@ ik_biexp_op:
     - "v' = (k*(v-v_r)*(v-v_theta) - u + I_ext + eta + g*s_in*(E_r - v)) / C"
     - "u' = (b*(mean(v)-v_r) - u) / tau_u + kappa*mean(spike)"
     - "s' = -s/tau_d + x"
-    - "x' = -x/tau_d + mean(spike)/(tau_r*tau_d)""
-    variables:
-      s: output(0.0)
-      v: variable(-60.0)
-      u: variable(0.0)
-      x: variable(0.0)
-      C: 100.0
-      k: 0.7
-      v_r: -60.0
-      v_theta: -40.0
-      eta: 0.0
-      g: 1.0
-      E_r: 0.0
-      b: -2.0
-      tau_u: 33.33
-      kappa: 10.0
-      tau_r: 2.0
-      tau_d: 6.0
-      I_ext: input(0.0)
-      spike: input(0.0)
-      s_in: input(0.0)
+    - "x' = -x/tau_d + mean(spike)/(tau_r*tau_d)"
+  variables:
+    s: output(0.0)
+    v: variable(-60.0)
+    u: variable(0.0)
+    x: variable(0.0)
+    C: 100.0
+    k: 0.7
+    v_r: -60.0
+    v_theta: -40.0
+    eta: 0.0
+    g: 1.0
+    E_r: 0.0
+    b: -2.0
+    tau_u: 33.33
+    kappa: 10.0
+    tau_r: 2.0
+    tau_d: 6.0
+    I_ext: input(0.0)
+    spike: input(0.0)
+    s_in: input(0.0)
 
 
 # node templates

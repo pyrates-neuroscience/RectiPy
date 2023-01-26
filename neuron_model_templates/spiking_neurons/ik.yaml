@@ -45,7 +45,7 @@ ik_biexp_op:
     - "v' = (k*(v-v_r)*(v-v_theta) - u + I_ext + eta + g*s_in*(E_r - v)) / C"
     - "u' = (b*(mean(v)-v_r) - u) / tau_u + kappa*mean(spike)"
     - "s' = -s/tau_d + x"
-    - "x' = -x/tau_d + mean(spike)/(tau_r*tau_d)"
+    - "x' = -x/tau_r + spike/(tau_r*tau_d)"
   variables:
     s: output(0.0)
     v: variable(-60.0)

@@ -4,6 +4,11 @@ Changelog
 0.9
 ---
 
+0.9.3
+~~~~~
+
+- added a new IK neuron template with biexponential synaptic dynamics
+
 0.9.2
 ~~~~~
 

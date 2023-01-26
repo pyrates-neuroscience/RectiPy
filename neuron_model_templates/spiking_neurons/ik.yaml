@@ -50,6 +50,7 @@ ik_biexp_op:
       s: output(0.0)
       v: variable(-60.0)
       u: variable(0.0)
+      x: variable(0.0)
       C: 100.0
       k: 0.7
       v_r: -60.0
@@ -81,3 +82,9 @@ iku:
   base: NodeTemplate
   operators:
     - iku_op
+
+# IK neuron with biexponential synaptic dynamics
+ik_biexp:
+  base: NodeTemplate
+  operators:
+    - ik_biexp_op

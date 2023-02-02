@@ -8,7 +8,7 @@ Changelog
 ~~~~~
 
 - added a new IK neuron template with biexponential synaptic dynamics
-- fixed a bug with the readthedocs documentation website
+- improved layout of the readthedocs documentation website
 
 0.9.2
 ~~~~~

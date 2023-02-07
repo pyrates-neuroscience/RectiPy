@@ -230,8 +230,8 @@ def wta_score(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.mean(z))
 
 
-def readout(X: np.ndarray, y: np.ndarray, k: int = 1, train_split: int = None, verbose: bool = True, **kwargs
-            ) -> dict:
+def readout(X: np.ndarray, y: np.ndarray, k: int = 1, test_size: float = 0.2, verbose: bool = True,
+            normalize: str = None, **kwargs) -> dict:
     """Uses Ridge regression to find a set of coefficients `a` that minimizes `y - aX`.
 
     Parameters
@@ -239,17 +239,21 @@ def readout(X: np.ndarray, y: np.ndarray, k: int = 1, train_split: int = None, v
     X
         2D array of data (rows = samples, columns = features).
     y
-        2D array of data (rows = samples, columns = output dimensions).
+        2D array of data (rows = samples, columns = output dimensions) or 1D array of samples.
     k
         If larger 1, `k` splits into training and testing data will be performed, and for each of these splits a ridge
         regression will be calculated.
-    train_split
-        An integer that splits `X` and `y` into a training and a test data set. Must be smaller than the size of the
-        first dimension of `X` and `y`.
+    test_size
+        Fraction of the input data that is used for independent testing after the training is done.
     verbose
         If true, updates about the regression procedure will be displayed.
+    method
+        Regression method/model to be used. Can be one of 'Ridge', 'RidgeClassifier', 'LogisticRegression',
+        'ElasticNet', or 'Lasso'.
+    normalize
+        Choose from "minmax" or "standard" to scale the input data.
     kwargs
-        Additional keyword arguments passed to `sklearn.linear_model.Ridge`
+        Additional keyword arguments passed to `sklearn.linear_model.SGDClassifier`
 
     Returns
     -------
@@ -264,26 +268,33 @@ def readout(X: np.ndarray, y: np.ndarray, k: int = 1, train_split: int = None, v
     """
 
     # imports
-    from sklearn.linear_model import Ridge
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.linear_model import SGDClassifier
+    from sklearn.model_selection import StratifiedKFold, train_test_split
+    from sklearn.preprocessing import scale, minmax_scale
+
+    # initialize classifier
+    classifier = SGDClassifier(**kwargs)
+
+    # normalize input data
+    if normalize == "minmax":
+        X = minmax_scale(X)
+    elif normalize == "standard":
+        X = scale(X)
 
     # split into training and test data set
-    if train_split:
-        X, X_t = X[:train_split], X[train_split:]
-        y, y_t = y[:train_split], y[train_split:]
+    if test_size > 0.0:
+        X, X_t, y, y_t = train_test_split(X, y, test_size=test_size, shuffle=False)
 
     # perform ridge regression
     if k > 1:
         splitter = StratifiedKFold(n_splits=k)
         scores, coefs, intercepts = [], [], []
         for i, (train_idx, test_idx) in enumerate(splitter.split(X=X, y=y)):
-            classifier = Ridge(**kwargs)
             classifier.fit(X[train_idx], y[train_idx])
             scores.append(classifier.score(X=X[test_idx], y=y[test_idx]))
             coefs.append(classifier.coef_)
             intercepts.append(classifier.intercept_)
     else:
-        classifier = Ridge(**kwargs)
         classifier.fit(X, y)
         scores = [classifier.score(X=X, y=y)]
         coefs = [classifier.coef_]
@@ -297,18 +308,17 @@ def readout(X: np.ndarray, y: np.ndarray, k: int = 1, train_split: int = None, v
     if verbose:
         print(f'Finished readout training.')
         if k > 1:
-            print(fr'Average, cross-validated $R^2$ score across {k} test folds: {train_score}')
+            print(fr'Average, cross-validated score across {k} test folds: {train_score}')
         else:
-            print(fr'$R^2$ score on training data: {train_score}')
+            print(fr'Score on training data: {train_score}')
 
     # store temporary results
     res = {"train_score": train_score, "readout_weights": w_out, "readout_bias": intercept, "test_score": None,
            "prediction": None, "target": None}
 
     # perform testing
-    if train_split:
+    if test_size > 0.0:
 
-        classifier = Ridge(**kwargs)
         classifier.coef_ = w_out
         classifier.intercept_ = intercept
 
@@ -318,7 +328,7 @@ def readout(X: np.ndarray, y: np.ndarray, k: int = 1, train_split: int = None, v
 
         if verbose:
             print(f'Finished readout training.')
-            print(fr"$R^2$ score on testing data: {res['test_score']}")
+            print(fr"Score on testing data: {res['test_score']}")
 
     else:
 

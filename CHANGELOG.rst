@@ -8,6 +8,7 @@ Changelog
 ~~~~~
 
 - added a new IK neuron template with biexponential synaptic dynamics
+- improved layout of the readthedocs documentation website
 - changed the `readout` function to use the `SGDClassifier` instead of `Ridge` from sklearn
 
 0.9.2

@@ -42,8 +42,7 @@ is 1 whenever the neuron spikes and 0 otherwise (:math:`\\delta` is the Dirac de
 Connections between different QIF neurons can be established by projecting :math:`s_i` to the variable :math:`s_i^{in}`
 of other neurons in the network. We demonstrate this below.
 
-References
-^^^^^^^^^^
+**References**
 
 .. [1] E. Izhikevich (2007) *Dynamical Systems in Neuroscience.* MIT Press, ISBN: 978-0-262-09043-8.
 .. [2] R. Gast (2021) *Phase transitions between asynchronous and synchronous neural dynamics.* University of Leipzig.

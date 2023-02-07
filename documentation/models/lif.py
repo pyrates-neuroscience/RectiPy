@@ -8,7 +8,7 @@ It has a single state-variable :math:`v_i`, the dynamics of which are governed b
 
 .. math::
 
-    \\dot v_i &= -\\frac{v_i}{\\tau} + I_i(t) + k s_i^{in}.
+    \\dot v_i = -\\frac{v_i}{\\tau} + I_i(t) + k s_i^{in}.
 
 The two constants governing the dynamics of :math:`v_i` are the global decay time constant :math:`\\tau` and the global
 coupling constant :math:`k`. Any time :math:`v_i \\geq v_{peak}`, a spike is counted and the reset condition
@@ -19,7 +19,7 @@ Here, we use a spike-driven synaptic activation :math:`s_i` with the following d
 
 .. math::
 
-    \\tau_s \\dot s_i &= -\\frac{s_i}{\\tau_s} + \\delta(v_i - v_{peak}),
+    \\tau_s \\dot s_i = -\\frac{s_i}{\\tau_s} + \\delta(v_i - v_{peak}),
 
 where :math:`\\tau_s` is the synaptic time constant and :math:`\\delta` is the `Dirac delta <https://en.wikipedia.org/wiki/Dirac_delta_function>`_ function,
 which is one whenever a spike is elicited by the :math:`i^{th}` neuron and zero otherwise.

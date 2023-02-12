@@ -1,3 +1,7 @@
+"""
+Contains the network classes, which are the main interfaces for the user to interact with.
+"""
+
 from pyrates import NodeTemplate, CircuitTemplate, clear, clear_frontend_caches
 import torch
 from torch.nn import Module

@@ -1,6 +1,16 @@
 Changelog
 =========
 
+0.10
+----
+
+0.10.0
+------
+
+- added new module for optimization functionalities
+- changed the structure of the `Network.train` method. It is now a high-level method that is used to choose a particular training method
+- recursive least-squares was added as a new training method next to gradient descent
+
 0.9
 ---
 

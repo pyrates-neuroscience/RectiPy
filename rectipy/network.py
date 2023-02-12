@@ -294,9 +294,47 @@ class Network:
         """
         self.output_layer = None
 
-    def train(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
-              loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
-              optimizer_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
+    def train(self, inputs: np.ndarray, targets: np.ndarray, method: str = "gradient_descent",
+              sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
+        """High-level training method for model parameter optimization. Allows to choose between the specific
+        optimization methods.
+
+        Parameters
+        ----------
+        inputs
+            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
+            input dimensions of the network.
+        targets
+            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
+            network.
+        method
+            Name of the optimization method. Possible choices are:
+            - 'gradient_descent' for gradient-descent-based optimization via `torch.autograd`
+            - 'rls' for recursive least-squares
+        sampling_steps
+            Number of training steps at which to record observables.
+        verbose
+            If true, the training progress will be displayed.
+        kwargs
+            Additional keyword arguments passed to the chosen training method.
+
+        Returns
+        -------
+        Observer
+            Instance of the `observer`.
+        """
+
+        if method == "gradient_descent":
+            return self.train_gd(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        if method == "rls":
+            return self.train_rls(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        else:
+            raise ValueError("Invalid training method. Please see the docstring of `Network.train` for valid choices "
+                             "of the keyword argument 'method'.")
+
+    def train_gd(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
+                 loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
+                 optimizer_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
         """Optimize model parameters such that the model output matches the provided targets as close as possible.
 
         Parameters
@@ -387,6 +425,36 @@ class Network:
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
+
+    def train_rls(self, inputs: np.ndarray, targets: np.ndarray, forget_rate: float = 1.0,  sampling_steps: int = 100,
+                  verbose: bool = True, **kwargs) -> Observer:
+        r"""Finds model parameters $w$ such that $||Xw - y||_2$ is minimized, where $X$ contains the neural activity and
+        $y$ contains the targets.
+
+        Parameters
+        ----------
+        inputs
+            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
+            input dimensions of the network.
+        targets
+            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
+            network.
+        forget_rate
+            Parameter lambda of the recursive least-squares algorithm.
+        sampling_steps
+            Number of training steps at which to record observables.
+        verbose
+            If true, the training progress will be displayed.
+        kwargs
+            Additional keyword arguments used for the optimization, loss calculation and observation.
+
+        Returns
+        -------
+        Observer
+            Instance of the `observer`.
+        """
+
+        pass
 
     def test(self, inputs: np.ndarray, targets: np.ndarray, loss: str = 'mse', loss_kwargs: dict = None,
              sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:

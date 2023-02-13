@@ -238,7 +238,7 @@ class Network:
         input_layer = InputLayer(self.n, m, weights, trainable=trainable, dtype=dtype)
 
         # add layer to model
-        self.input_layer = input_layer.to(self.device)
+        self.input_layer = self._move_to_device(input_layer)
 
         # return layer
         return self.input_layer
@@ -279,7 +279,7 @@ class Network:
                                    dtype=dtype, **kwargs)
 
         # add layer to model
-        self.output_layer = output_layer.to(self.device)
+        self.output_layer = self._move_to_device(output_layer)
 
         # return layer
         return self.output_layer
@@ -703,6 +703,11 @@ class Network:
             return self._var_map[var]
         except KeyError:
             return var
+
+    def _move_to_device(self, model: Sequential):
+        for layer in model:
+            layer.to(self.device)
+        return model.to(self.device)
 
     @staticmethod
     def _get_optimizer(optimizer: str, lr: float, model_params: Iterator, optimizer_kwargs: dict = None

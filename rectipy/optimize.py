@@ -3,13 +3,11 @@ Contains classes and functions for model optimization/training
 """
 import torch
 from torch.nn import Module
-import math
-from typing import Optional, Callable
 
 
-class ExtendedRLS(Module):
+class ExpRLS(Module):
 
-    def __init__(self, X: torch.Tensor, y: torch.Tensor, A: torch.Tensor, delta: float = 1.0):
+    def __init__(self, X: torch.Tensor, y: torch.Tensor, w: torch.Tensor, beta: float, delta: float = 1.0):
         """General form of the extended recursive least-squares algorithm as described in [1]_.
 
         Parameters
@@ -19,9 +17,12 @@ class ExtendedRLS(Module):
         y
             2D array with targets. Each row is an observation, each column is a target variable.
             Number of observations must be the same for `X` and `y`.
-        A
-            2D square transition matrix. Maps from previous observation coefficients to new observation coefficients.
-            Numbers of rows/columns correspond to the number of columns of `X`.
+        w
+            2D array with initial set of weights. Each row corresponds to a observation variable and each column
+            corresponds to a target variable.
+        beta
+            Forgetting rate with 0 < beta <= 1. The smaller beta is, the more importance is given to most recent
+            observations over past observations.
         delta
             Regularization parameter for the initial state of the state-error correlation matrix `P`.
 
@@ -40,41 +41,42 @@ class ExtendedRLS(Module):
         if len(y.shape) < 2:
             raise ValueError("Target matrix y should be 2-dimensional, where rows are observation samples and columns "
                              "are target variables.")
-        if len(A.shape) < 2:
-            raise ValueError("Transition matrix should be 2-dimensional, where rows and columns are coefficients of "
-                             "observation variables.")
         assert X.shape[0] == y.shape[0]
-        assert X.shape[1] == A.shape[0] == A.shape[1]
 
         # set basic parameters
         self.n_obs = X.shape[0]
         self.n_in = X.shape[1]
         self.n_out = y.shape[1]
         self.delta = delta
-        self.A = A
-        self.A_inv = torch.inverse(A)
-        self.A_t = A.T
+        self.beta_sq = beta**2
+        self.beta_sq_inv = 1.0/self.beta_sq
         self.P = delta * torch.eye(self.n_in, device=X.device, dtype=X.dtype)
-        self.w = torch.zeros(size=self.n_in, device=X.device, dtype=X.dtype)
+        self.w = w
+        self.loss = 0
 
         # calculate initial weight vector
-        X_t = X.T
-        self.w.add(torch.matmul(torch.pinverse(X_t @ X), torch.matmul(X_t, y)))
+        if self.n_obs > 1:
+            self.w.add(torch.matmul(torch.matmul(y.T, X), torch.pinverse(X.T @ X)))
 
-    def forward(self, x: torch.Tensor, y: torch.tensor) -> float:
+    def forward(self, x: torch.Tensor, y: torch.tensor) -> torch.Tensor:
 
-        # calculate variance of the error
-        r = x.T @ self.P @ x
+        # predict target vector y
+        y_pred = self.w @ x
 
-        # calculate the gain vector
-        k = (self.A @ self.P @ x) / r
+        # calculate current error
+        err = y - y_pred
 
-        # update the error correlation matrix
-        self.P = self.A @ (self.P - self.A_inv @ k @ x.T @ self.P) @ self.A_t
+        # calculate the gain
+        k = torch.matmul(self.P, x*self.beta_sq_inv)
+        k /= (1.0 + torch.inner(x, k))
 
         # update the weights
-        loss = y - x @ self.w
-        self.w.mul_(self.A)
-        self.w.add_(k * loss)
+        self.w.add_(torch.outer(err, k))
 
-        return loss.T @ loss
+        # update the error correlation matrix
+        self.P -= torch.outer(k, torch.inner(x, self.P))
+        self.P *= self.beta_sq_inv
+
+        # update loss
+        self.loss = torch.inner(err, err)
+        return y_pred

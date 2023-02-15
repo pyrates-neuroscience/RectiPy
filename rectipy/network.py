@@ -705,8 +705,11 @@ class Network:
             return var
 
     def _move_to_device(self, model: Sequential):
-        for layer in model:
-            layer.to(self.device)
+        try:
+            for layer in model:
+                layer.to(self.device)
+        except TypeError:
+            pass
         return model.to(self.device)
 
     @staticmethod

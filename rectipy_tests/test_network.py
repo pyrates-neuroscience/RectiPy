@@ -3,7 +3,7 @@
 
 # imports
 from rectipy.rnn_layer import RNNLayer, SRNNLayer
-from rectipy.input_layer import LinearStatic, Linear
+from rectipy.ffwd_layer import Linear
 from rectipy import Network
 import torch
 import pytest
@@ -35,7 +35,7 @@ accuracy = 1e-3
 #######
 
 
-def test_4_1_init():
+def test_3_1_init():
     """Tests initialization of Network class.
     """
 
@@ -93,7 +93,7 @@ def test_4_1_init():
                            output_var=out_var, clear=True, verbose=False)
 
 
-def test_4_2_input_layer():
+def test_3_2_input_layer():
     """Tests input layer properties of Network class.
     """
 
@@ -121,9 +121,9 @@ def test_4_2_input_layer():
                              target_var=t_var, clear=True, verbose=False, file_name="net4", dtype=torch.float32)
 
     # add input layer
-    net1.add_input_layer(m, trainable=False, dtype=torch.float32)
-    net2.add_input_layer(m, weights=np.random.randn(m, n), trainable=False, dtype=torch.float32)
-    net3.add_input_layer(m, trainable=True, dtype=torch.float32)
+    net1.add_input_layer(m, train=None, dtype=torch.float32)
+    net2.add_input_layer(m, weights=np.random.randn(m, n), train=None, dtype=torch.float32)
+    net3.add_input_layer(m, train="gd", dtype=torch.float32)
     net4.add_input_layer(m, dtype=torch.float64)
     net1.compile()
     net2.compile()
@@ -131,9 +131,9 @@ def test_4_2_input_layer():
     net4.compile()
 
     # these tests should pass
-    assert isinstance(net1.input_layer, LinearStatic)
+    assert isinstance(net1.input_layer, Linear)
     assert isinstance(net3.input_layer, Linear)
-    assert isinstance(net1[0], LinearStatic)
+    assert isinstance(net1[0], Linear)
     assert tuple(net2.input_layer.weights.shape) == (n, m)
     assert net4.input_layer.weights.dtype == torch.float64
     assert tuple(net1.forward(x).shape) == (n,)
@@ -150,7 +150,7 @@ def test_4_2_input_layer():
         net1.add_input_layer(m, weights=np.random.randn(m+1, n+1))
 
 
-def test_4_3_output_layer():
+def test_3_3_output_layer():
     """Tests output layer properties of Network class.
     """
 
@@ -185,8 +185,8 @@ def test_4_3_output_layer():
     # add output layers
     net1.add_output_layer(k, weights=out_weights)
     net2.add_output_layer(k, weights=out_weights, activation_function='sigmoid')
-    net3.add_output_layer(k, trainable=True)
-    net4.add_output_layer(k, trainable=True, bias=False)
+    net3.add_output_layer(k, train='gradient')
+    net4.add_output_layer(k, train='gradient', bias=False)
     net5.add_output_layer(k, dtype=torch.float32)
     net1.compile()
     net2.compile()
@@ -213,7 +213,7 @@ def test_4_3_output_layer():
         net5.forward(x)
 
 
-def test_4_4_compile():
+def test_3_4_compile():
     """Tests compile functionalities of Network class.
     """
 
@@ -258,7 +258,7 @@ def test_4_4_compile():
         net.forward(x)
 
 
-def test_4_5_parameters():
+def test_3_5_parameters():
     """Tests parameters method of Network class.
     """
 
@@ -285,8 +285,8 @@ def test_4_5_parameters():
     assert len(list(net2.parameters())) == 2
 
     # add input layers
-    net1.add_input_layer(m, trainable=True)
-    net2.add_input_layer(m, trainable=False)
+    net1.add_input_layer(m, train=True)
+    net2.add_input_layer(m, train=False)
     net1.compile()
     net2.compile()
 
@@ -295,8 +295,8 @@ def test_4_5_parameters():
     assert len(list(net2.parameters())) == 2
 
     # add output layers
-    net1.add_output_layer(k, trainable=True, bias=False)
-    net2.add_output_layer(k, trainable=True, bias=True)
+    net1.add_output_layer(k, train=True, bias=False)
+    net2.add_output_layer(k, train=True, bias=True)
     net1.compile()
     net2.compile()
 
@@ -305,7 +305,7 @@ def test_4_5_parameters():
     assert len(list(net2.parameters())) == 4
 
 
-def test_4_6_simulation():
+def test_3_6_simulation():
     """Tests simulation functionalities of Network class.
     """
 
@@ -349,7 +349,7 @@ def test_4_6_simulation():
     assert np.mean(np.abs(x - y)) == pytest.approx(0, rel=accuracy, abs=accuracy)
 
 
-def test_4_7_optimization():
+def test_3_7_optimization():
     """Tests optimization functions of Network class.
     """
 

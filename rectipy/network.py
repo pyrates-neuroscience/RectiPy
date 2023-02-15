@@ -1,9 +1,8 @@
 import torch
 from torch.nn import Sequential
-from typing import Union, Iterator, Callable, Tuple
+from typing import Union, Iterator, Callable, Tuple, Optional
 from .rnn_layer import RNNLayer, SRNNLayer
-from .input_layer import InputLayer
-from .output_layer import OutputLayer
+from .ffwd_layer import GradientDescentLayer, LayerStack, RLSLayer, Linear
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
@@ -212,8 +211,8 @@ class Network:
         """
         return self._model
 
-    def add_input_layer(self, m: int, weights: np.ndarray = None, trainable: bool = False,
-                        dtype: torch.dtype = torch.float64) -> InputLayer:
+    def add_input_layer(self, m: int, weights: np.ndarray = None, train: Optional[str] = None,
+                        dtype: torch.dtype = torch.float64, **kwargs) -> Linear:
         """Add an input layer to the network. Networks can have either 1 or 0 input layers.
 
         Parameters
@@ -222,29 +221,38 @@ class Network:
             Number of input dimensions.
         weights
             `n x m` weight matrix that realizes the linear projection of the inputs in each input dimension to the
-            neurons in the RNN layer.
-        trainable
-            If true, the input weights will be made available for optimization.
+            units in the RNN layer.
+        train
+            Can be used to make the output layer trainable. The following options are available:
+            - `None` for a static output layer
+            - 'gd' for training of the readout weights via standard pytorch gradient descent
         dtype
             Data type of the input weights.
+        kwargs
+            Additional keyword arguments to be passed to the input layer class initialization method.
 
         Returns
         -------
-        InputLayer
-            Instance of the `InputLayer`.
+        Linear
+            Instance of the input layer.
         """
 
         # initialize input layer
-        input_layer = InputLayer(self.n, m, weights, trainable=trainable, dtype=dtype)
+        kwargs.update({"n_in": m, "n_out": self.n, "weights": weights, "dtype": dtype})
+        if train == "gd":
+            input_layer = GradientDescentLayer(n_in=m, n_out=self.n, weights=weights, dtype=dtype)
+        else:
+            input_layer = Linear(n_in=m, n_out=self.n, weights=weights, dtype=dtype)
 
         # add layer to model
-        self.input_layer = self._move_to_device(input_layer)
+        self.input_layer = input_layer.to(self.device)
 
         # return layer
         return self.input_layer
 
-    def add_output_layer(self, k: int, weights: np.ndarray = None, trainable: bool = False,
-                         activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs) -> OutputLayer:
+    def add_output_layer(self, k: int, weights: np.ndarray = None, train: Optional[str] = None,
+                         activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs
+                         ) -> Union[Linear, LayerStack]:
         """Add an output layer to the network. Networks can have either 1 or 0 output layers.
 
         Parameters
@@ -254,32 +262,44 @@ class Network:
         weights
             `k x n` weight matrix that realizes the linear projection of the output of the RNN layer units to the output
             layer units.
-        trainable
-            If true, the output weights will be made available for optimization.
+        train
+            Can be used to make the output layer trainable. The following options are available:
+            - `None` for a static output layer
+            - 'gd' for training of the readout weights via standard pytorch gradient descent
+            - 'rls' for recursive least squares training of the readout weights
         activation_function
             Optional activation function applied to the output of the output layer. Valid options are:
             - 'tanh' for `torch.nn.Tanh()`
             - 'sigmoid' for `torch.nn.Sigmoid()`
             - 'softmax' for `torch.nn.Softmax(dim=0)`
             - `softmin` for `torch.nn.Softmin(dim=0)`
-            - None (default) for `torch.nn.Identity()`
+            - `None` (default) for `torch.nn.Identity()`
         dtype
             Data type of the input weights.
         kwargs
-            Additional keyword arguments to be passed on to `rectipy.output_layer.OutputLayer`.
+            Additional keyword arguments to be passed to the output layer class initialization method.
 
         Returns
         -------
-        OutputLayer
-            Instance of the `OutputLayer`.
+        Linear
+            Instance of the output layer.
         """
 
         # initialize output layer
-        output_layer = OutputLayer(self.n, k, weights, trainable=trainable, activation_function=activation_function,
-                                   dtype=dtype, **kwargs)
+        kwargs.update({"n_in": self.n, "n_out": k, "weights": weights, "dtype": dtype})
+        if train == "rls":
+            output_layer = RLSLayer(**kwargs)
+        elif train == "gd":
+            output_layer = GradientDescentLayer(**kwargs)
+        else:
+            output_layer = Linear(**kwargs)
+
+        # add activation function to output layer
+        if activation_function:
+            output_layer = LayerStack(output_layer, activation_function)
 
         # add layer to model
-        self.output_layer = self._move_to_device(output_layer)
+        self.output_layer = output_layer.to(self.device)
 
         # return layer
         return self.output_layer
@@ -703,11 +723,6 @@ class Network:
             return self._var_map[var]
         except KeyError:
             return var
-
-    def _move_to_device(self, model: Sequential):
-        for layer in model:
-            layer.to(self.device)
-        return model.to(self.device)
 
     @staticmethod
     def _get_optimizer(optimizer: str, lr: float, model_params: Iterator, optimizer_kwargs: dict = None

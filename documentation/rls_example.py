@@ -32,7 +32,7 @@ target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integr
                                edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
                                input_var="li_op/I_ext", output_var="li_op/v", clear=True, float_precision="float64",
                                file_name='target_net', node_vars={'all/li_op/v': np.random.randn(N)}, device=device)
-target_net.add_output_layer(m, weights=W_out, trainable=False, activation_function=None)
+target_net.add_output_layer(m, weights=W_out, train=False, activation_function=None)
 
 learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J,
                                  edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
@@ -88,7 +88,7 @@ while loss > tol and step < max_steps:
 ###############
 
 # add output layer to learning net
-learning_net.add_output_layer(m, weights=opt.w.detach().cpu().numpy(), trainable=False)
+learning_net.add_output_layer(m, weights=opt.w.detach().cpu().numpy(), train=False)
 learning_net.compile()
 
 print("Starting testing...")

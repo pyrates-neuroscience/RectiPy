@@ -37,7 +37,7 @@ def rate(t, y, I_ext, weights, tau):
 #######
 
 
-def test_3_1_rnn_init():
+def test_2_1_rnn_init():
     """Tests initialization options of the rnn layer.
     """
 
@@ -78,7 +78,7 @@ def test_3_1_rnn_init():
         _ = rnn2['li_op/u']
 
 
-def test_3_2_detach():
+def test_2_2_detach():
     """Tests the detach function of the RNN layer.
     """
 
@@ -104,7 +104,7 @@ def test_3_2_detach():
             assert not arg2.requires_grad
 
 
-def test_3_3_forward():
+def test_2_3_forward():
     """Tests forward function of the RNN layer.
     """
 
@@ -153,7 +153,7 @@ def test_3_3_forward():
         rnn1.forward(np.random.randn(n))
 
 
-def test_3_4_reset():
+def test_2_4_reset():
     """Tests reset method of RNNLayer
     """
 

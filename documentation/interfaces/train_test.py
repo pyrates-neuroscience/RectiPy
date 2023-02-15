@@ -62,7 +62,7 @@ p_in = 0.2
 W_in = input_connections(N, m, p_in, variance=5.0)
 
 # add input layer
-net.add_input_layer(m, weights=W_in, trainable=False)
+net.add_input_layer(m, weights=W_in, train=False)
 
 # %%
 # Here, we used the function :code:`rectipy.input_connections` to generate the coupling weights of the input layer.
@@ -78,7 +78,7 @@ k = 3
 activation_function = "softmax"
 
 # add readout layer
-net.add_output_layer(k, trainable=True, activation_function=activation_function)
+net.add_output_layer(k, train=True, activation_function=activation_function)
 
 # %%
 # By declaring this layer as trainable, the weights of this layer are going to be optimized during training.

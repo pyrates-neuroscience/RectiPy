@@ -66,6 +66,7 @@ def test_3_1_init():
     net5 = Network.from_yaml(node_spiking, weights=weights, input_var="I_ext", output_var="s", source_var="s",
                              target_var="s_in", op="qif_op", spike_var="spike", spike_def="v",  clear=True,
                              verbose=False, dtype=torch.float32)
+    # TODO: add tests for Network.from_template method
 
     # these tests should pass
     assert isinstance(net1.rnn_layer, RNNLayer)

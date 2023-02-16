@@ -1,5 +1,4 @@
 from rectipy import Network
-from rectipy.optimize import ExpRLS
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -32,13 +31,14 @@ target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integr
                                edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
                                input_var="li_op/I_ext", output_var="li_op/v", clear=True, float_precision="float64",
                                file_name='target_net', node_vars={'all/li_op/v': np.random.randn(N)}, device=device)
-target_net.add_output_layer(m, weights=W_out, train=False, activation_function=None)
+target_net.add_output_layer(m, weights=W_out, train=None, activation_function=None)
 
 learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J,
                                  edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
                                  input_var="li_op/I_ext", output_var="li_op/v", clear=False, float_precision="float64",
                                  node_vars={"all/li_op/k": k0, "all/li_op/tau": tau0},
                                  file_name='learning_net', device=device)
+learning_net.add_output_layer(m, train="rls")
 
 # compile networks
 target_net.compile()
@@ -59,27 +59,21 @@ epsilon = 0.999
 dt = 1e-3
 freq = 0.2
 amp = 0.1
+W_fb = torch.randn(N, m, device=device)
 
 # optimization
 ##############
 
-# optimizer
-w = [p for p in learning_net.parameters()]
-X_0 = torch.zeros((1, N), device=device, dtype=torch.float64)
-y_0 = torch.zeros((1, m), device=device, dtype=torch.float64)
-w_0 = torch.zeros((m, N), device=device, dtype=torch.float64)
-opt = ExpRLS(X_0, y_0, w_0, beta=0.999, delta=1e-2)
-
 # optimization loop
 losses = []
 step = 0
+x = np.zeros((m,), dtype=np.float64)
 while loss > tol and step < max_steps:
 
     inp = np.sin(2 * np.pi * freq * step * dt) * amp
-    y = target_net.forward(inp)
-    x = learning_net.forward(inp)
-    _ = opt.forward(x, y)
-    loss = epsilon*loss + (1-epsilon)*opt.loss.detach().cpu().numpy()
+    y = target_net(inp)
+    x = learning_net(inp + W_fb @ x, y)
+    loss = epsilon*loss + (1-epsilon)*learning_net[-1].loss.detach().cpu().numpy()
     losses.append(loss)
     step += 1
     print(f"{step} training steps finished. Current loss: {loss}.")
@@ -87,17 +81,13 @@ while loss > tol and step < max_steps:
 # model testing
 ###############
 
-# add output layer to learning net
-learning_net.add_output_layer(m, weights=opt.w.detach().cpu().numpy(), train=False)
-learning_net.compile()
-
 print("Starting testing...")
 predictions = []
 targets = []
 for step in range(test_steps):
     inp = np.sin(2 * np.pi * freq * step * dt) * amp
-    prediction = learning_net.forward(inp)
-    target = target_net.forward(inp)
+    prediction = learning_net(inp)
+    target = target_net(inp)
     predictions.append(prediction.detach().cpu().numpy())
     targets.append(target.detach().cpu().numpy())
 print("Finished.")

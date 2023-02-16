@@ -38,6 +38,9 @@ class Linear(Module):
                     val.requires_grad = True
                     self.train_params.append(val)
 
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
     def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.weights @ x
 

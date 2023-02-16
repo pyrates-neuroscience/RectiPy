@@ -3,7 +3,7 @@ from torch.nn import Sequential
 from typing import Union, Iterator, Callable, Tuple, Optional
 from .rnn_layer import RNNLayer, SRNNLayer
 from .ffwd_layer import LayerStack, RLSLayer, Linear
-from .utility import retrieve_from_dict, add_op_name
+from .utility import retrieve_from_dict, add_op_name, overload
 from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
 import numpy as np
@@ -57,6 +57,11 @@ class Network:
         except TypeError:
             self.compile()
             return len(self._model)
+
+    def __call__(self, *args):
+        if len(args) > 1:
+            return self.forward_train(*args)
+        return self.forward(*args)
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -414,8 +419,8 @@ class Network:
         ##############
 
         # transform inputs into tensors
-        inp_tensor = torch.tensor(inputs)
-        target_tensor = torch.tensor(targets)
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
         if inp_tensor.shape[0] != target_tensor.shape[0]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension.')
@@ -443,17 +448,18 @@ class Network:
 
         t0 = perf_counter()
         if len(inp_tensor.shape) > 2:
-            self._train_epochs(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs,
-                               step_kwargs, sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
+            self._train_gd_epochs(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs,
+                                  step_kwargs, sampling_steps=sampling_steps, optim_steps=optimizer_steps,
+                                  verbose=verbose)
         else:
-            self._train(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                        sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
+            self._train_gd(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
+                           sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
 
-    def train_rls(self, inputs: np.ndarray, targets: np.ndarray, forget_rate: float = 1.0,  sampling_steps: int = 100,
-                  verbose: bool = True, **kwargs) -> Observer:
+    def train_rls(self, inputs: np.ndarray, targets: np.ndarray,  feedback_weights: np.ndarray = None,
+                  sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         r"""Finds model parameters $w$ such that $||Xw - y||_2$ is minimized, where $X$ contains the neural activity and
         $y$ contains the targets.
 
@@ -465,8 +471,9 @@ class Network:
         targets
             `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
             network.
-        forget_rate
-            Parameter lambda of the recursive least-squares algorithm.
+        feedback_weights
+            `m x k` array of synaptic weights. If provided, a feedback connections is established with these weights,
+            that projects the network output back to the RNN layer.
         sampling_steps
             Number of training steps at which to record observables.
         verbose
@@ -480,7 +487,42 @@ class Network:
             Instance of the `observer`.
         """
 
-        pass
+        # preparations
+        ##############
+
+        # test correct dimensionality of inputs
+        if inputs.shape[0] != targets.shape[0]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension.')
+
+        # transform inputs into tensors
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
+
+        # set up model
+        if self.output_layer is None:
+            self.add_output_layer(k=targets.shape[1], train="rls", **kwargs)
+        model = self.compile() if self._model is None else self._model
+
+        # initialize observer
+        obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
+        obs = Observer(dt=self.rnn_layer.dt, **obs_kwargs)
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+
+        # optimization
+        ##############
+
+        t0 = perf_counter()
+        if feedback_weights is None:
+            obs = self._train_nofb(inp_tensor, target_tensor, model, obs, rec_vars, sampling_steps=sampling_steps,
+                                   verbose=verbose)
+        else:
+            W_fb = torch.tensor(feedback_weights, device=self.device)
+            obs = self._train_fb(inp_tensor, target_tensor, W_fb, model, obs, rec_vars, sampling_steps=sampling_steps,
+                                 verbose=verbose)
+        t1 = perf_counter()
+        print(f'Finished optimization after {t1 - t0} s.')
+        return obs
 
     def test(self, inputs: np.ndarray, targets: np.ndarray, loss: str = 'mse', loss_kwargs: dict = None,
              sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
@@ -516,8 +558,8 @@ class Network:
         ##############
 
         # transform inputs into tensors
-        inp_tensor = torch.tensor(inputs)
-        target_tensor = torch.tensor(targets)
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
 
         # set up model
         model = self.compile() if self._model is None else self._model
@@ -637,6 +679,47 @@ class Network:
         """
         return self._model(x)
 
+    @overload
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """Forward method for training an output layer that has an intrinsic weight-updating algorithm.
+
+        Parameters
+        ----------
+        x
+            Input tensor.
+        y
+            Target tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
+        """
+        for layer in self._model[:-1]:
+            x = layer(x)
+        return self._model[-1](x, y)
+
+    @overload
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """Forward method for training an output layer that has an intrinsic weight-updating algorithm and receives
+        additional feedback from the .
+
+        Parameters
+        ----------
+        x
+            Input tensor.
+        y
+            Target tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
+        """
+        for layer in self._model[:-1]:
+            x = layer(x)
+        return self._model[-1](x, y)
+
     def parameters(self, recurse: bool = True) -> Iterator:
         """Yields the trainable parameters of the network model.
 
@@ -656,13 +739,9 @@ class Network:
             for p in layer.parameters(recurse):
                 yield p
 
-    def _train(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
-               optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict,
-               sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
-
-        if inp.shape[0] != target.shape[0]:
-            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
-                             '`targets` agree in the first dimension.')
+    def _train_gd(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
+                  optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict,
+                  sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
 
         steps = inp.shape[0]
         for step in range(steps):
@@ -685,11 +764,11 @@ class Network:
                     print(f'Progress: {step}/{steps} training steps finished.')
                 obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
 
-    def _train_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
-                      optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
-                      step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
+    def _train_gd_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
+                         optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
+                         step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
 
-        if inp.shape[0] != target.shape[0] or inp.shape[1] != target.shape[1]:
+        if inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
 
@@ -723,6 +802,48 @@ class Network:
                 print(f'Progress: {epoch+1}/{epochs} training epochs finished.')
                 print(f'Epoch loss: {epoch_loss}.')
                 print('')
+
+    def _train_nofb(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, obs: Observer, rec_vars: list,
+                    sampling_steps: int = 100, verbose: bool = False):
+
+        out_layer = model[-1]
+        steps = inp.shape[0]
+        for step in range(steps):
+
+            # forward pass
+            prediction = model(inp[step, :], target[step, :])
+
+            # results storage
+            if step % sampling_steps == 0:
+                if verbose:
+                    print(f'Progress: {step}/{steps} training steps finished.')
+                obs.record(step, prediction, out_layer.loss, [self[v] for v in rec_vars])
+
+        return obs
+
+    def _train_fb(self, inp: torch.Tensor, target: torch.Tensor, W_fb: torch.Tensor, model: Sequential, obs: Observer,
+                  rec_vars: list, sampling_steps: int = 100, verbose: bool = False):
+
+        out_layer = model[-1]
+        steps = inp.shape[0]
+
+        # get initial step done prior to the loop
+        prediction = model(inp[0, :], target[0, :])
+        obs.record(0, prediction, out_layer.loss, [self[v] for v in rec_vars])
+
+        # loop over remaining steps
+        for step in range(1, steps):
+
+            # forward pass
+            prediction = model(inp[step, :] + W_fb @ prediction, target[step, :])
+
+            # results storage
+            if step % sampling_steps == 0:
+                if verbose:
+                    print(f'Progress: {step}/{steps} training steps finished.')
+                obs.record(step, prediction, out_layer.loss, [self[v] for v in rec_vars])
+
+        return obs
 
     def _relabel_var(self, var: str) -> str:
         try:

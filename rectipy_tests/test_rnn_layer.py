@@ -61,6 +61,7 @@ def test_2_1_rnn_init():
     rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                               source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                               output_var="tanh_op/r", clear=True, train_params=["weights"], verbose=False)
+    # TODO: add tests for RNNLayer.from_template method
 
     # these tests should pass
     assert isinstance(rnn1, RNNLayer)

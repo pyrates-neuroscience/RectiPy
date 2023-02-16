@@ -38,6 +38,9 @@ class RNNLayer(Module):
                 return self.y[idx[0]:idx[1]]
             return self.y[idx]
 
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
     @property
     def parameter_names(self) -> list:
         return list(self._param_map.keys())

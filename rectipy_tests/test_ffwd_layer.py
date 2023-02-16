@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.ffwd_layer import GradientDescentLayer, Linear, RLSLayer, LayerStack
+from rectipy.ffwd_layer import Linear, RLSLayer, LayerStack
 from torch.nn import Linear as TorchLinear
 import pytest
 import numpy as np
@@ -43,41 +43,41 @@ def test_1_1_linear_layer():
     n = 10
     m = 2
     w1 = np.random.randn(n, m)
-    x = torch.randn(m, dtype=torch.float64)
+    x = torch.randn(n, dtype=dtype)
 
     # create torch comparison layer
-    in_torch = TorchLinear(in_features=n, out_features=m, bias=False)
+    in_torch = TorchLinear(in_features=n, out_features=m, bias=False, dtype=dtype)
 
     # create different instances of the input layer
-    in1 = Linear(n, m)
-    in2 = Linear(m, n)
-    in3 = Linear(n, m, weights=w1.T)
-    in4 = Linear(n, m, weights=w1, dtype=torch.float32)
-    in5 = Linear(n, m, weights=w1, detach=False)
-    in6 = Linear(n, m, weights=in_torch.weight)
+    lin1 = Linear(n, m)
+    lin2 = Linear(m, n)
+    lin3 = Linear(n, m, weights=w1.T + 2.0)
+    lin4 = Linear(n, m, weights=w1, dtype=torch.float32)
+    lin5 = Linear(n, m, weights=w1, detach=False)
+    lin6 = Linear(n, m, weights=in_torch.weight)
 
     # these tests should pass
     #########################
 
     # test successful initialization
-    assert isinstance(in1, Linear)
+    assert isinstance(lin1, Linear)
 
     # test correct handling of layer weights
-    assert in1.weights.shape == w1.shape
-    assert in1.weights.shape[0] == in2.weights.shape[1]
-    assert torch.sum(in3.weights - w1).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
-    assert in3.weights.dtype == torch.float64
-    assert in4.weights.dtype == torch.float32
+    assert lin2.weights.shape == w1.shape
+    assert lin1.weights.shape[0] == lin2.weights.shape[1]
+    assert torch.sum(lin5.weights.detach() - w1.T).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
+    assert lin3.weights.dtype == torch.float64
+    assert lin4.weights.dtype == torch.float32
 
     # test correct handling of trainable parameters (the weights)
-    assert len(list(in5.parameters())) - len(list(in4.parameters())) == 1
-    assert len(list(in1.parameters())) == 0
-    assert in1.weights.requires_grad is False
-    assert in5.weights.requires_grad is False
+    assert len(list(lin5.parameters())) - len(list(lin4.parameters())) == 1
+    assert len(list(lin1.parameters())) == 0
+    assert lin1.weights.requires_grad is False
+    assert lin5.weights.requires_grad is True
 
     # test correctness of forward function
-    assert np.abs(torch.sum(in5.forward(x) - in3.forward(x)).detach().numpy()) > 0.0
-    assert np.abs(torch.sum(in_torch.forward(x) - in6.forward(x)).detach().numpy()) == pytest.approx(0.0, rel=accuracy, abs=accuracy)
+    assert np.abs(torch.sum(lin5.forward(x) - lin3.forward(x)).detach().numpy()) > 0.0
+    assert np.abs(torch.sum(in_torch.forward(x) - lin6.forward(x)).detach().numpy()) == pytest.approx(0.0, rel=accuracy, abs=accuracy)
 
     # these tests should fail
     #########################
@@ -88,8 +88,69 @@ def test_1_1_linear_layer():
 
     # test whether correct errors are thrown for wrong usage of the forward method
     with pytest.raises(RuntimeError):
-        in4.forward(x)
-        in1.forward(torch.randn(n))
+        lin4.forward(x)
+        lin1.forward(torch.randn(m))
+
+
+def test_1_2_rls_layer():
+    """Tests the functionalities of the `rectipy.ffwd_layer.RLSLayer` class.
+    """
+
+    # preparations
+    ##############
+
+    # parameters
+    dtype = torch.float64
+    n = 10
+    m = 2
+    w1 = np.random.randn(n, m)
+    x = torch.randn(n, dtype=dtype)
+    y = torch.randn(m, dtype=dtype)
+
+    # create different instances of the input layer
+    rls1 = RLSLayer(n, m)
+    rls2 = RLSLayer(n, m, weights=w1)
+    rls3 = RLSLayer(n, m, weights=w1, beta=0.5)
+    rls4 = RLSLayer(n, m, weights=w1, delta=0.5)
+
+    # these tests should pass
+    #########################
+
+    # test correct initialization
+    assert isinstance(rls1, RLSLayer)
+    assert torch.sum(rls2.weights - w1.T).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
+    assert rls1.P.shape[0] == n
+    assert len(list(rls2.parameters())) == 0
+
+    # calculate different forward passes of the RLS layer for preparation
+    r1_1 = rls1.forward(x)
+    r1_2 = rls1.forward(x)
+    for rls in [rls2, rls3, rls4]:
+        rls.forward(x, y)
+    r2 = rls2.forward(x, y)
+    r3 = rls3.forward(x, y)
+    r4 = rls4.forward(x, y)
+
+    # test correctness of forward method
+    assert r1_1.shape[0] == m
+    assert np.abs(torch.sum(r1_1 - r1_2).detach().numpy()) == pytest.approx(0.0, rel=accuracy, abs=accuracy)
+    assert np.abs(torch.sum(r2 - r3).detach().numpy()) > 0
+    assert np.abs(torch.sum(r3 - r4).detach().numpy()) > 0
+
+    # these tests should fail
+    #########################
+
+    # initialization
+    with pytest.raises(ValueError):
+        RLSLayer(n, m, delta=-0.5)
+        RLSLayer(n, m, beta=1.5)
+        RLSLayer(n+1, m, weights=w1)
+
+    # forwarding
+    with pytest.raises(RuntimeError):
+        rls1.forward(torch.randn(n+1, dtype=dtype))
+        rls1.forward(torch.randn(n, dtype=torch.float32))
+        rls1.forward(x, torch.randn(m+1, dtype=dtype))
 
 
 def test_1_3_layerstack():
@@ -103,35 +164,23 @@ def test_1_3_layerstack():
     x = torch.randn(n, dtype=torch.float64)
 
     # create different output layer instances
-    out1 = OutputLayer(n, m)
-    out2 = OutputLayer(m, n)
-    out3 = OutputLayer(n, m, weights=weights)
-    out4 = OutputLayer(n, m, weights=weights, train=True)
-    out5 = OutputLayer(n, m, weights=weights, activation_function='tanh')
-    out6 = OutputLayer(n, m, dtype=torch.float32)
-    out7 = OutputLayer(n, m, train=True, bias=False)
+    out1 = LayerStack(Linear(n, m))
+    out2 = LayerStack(Linear(n, m, weights=weights), activation_function='tanh')
+    out3 = LayerStack(Linear(n, m+1, dtype=torch.float32), activation_function="softmax")
 
     # these tests should pass
     assert isinstance(out1, torch.nn.Sequential)
-    assert isinstance(out1[0], LinearStatic)
-    assert isinstance(out4[0], Linear)
+    assert isinstance(out1[0], Linear)
     assert isinstance(out1[1], torch.nn.Identity)
-    assert isinstance(out5[1], torch.nn.Tanh)
-    assert out1[0].weights.shape[0] == out2[0].weights.shape[1]
-    assert torch.sum(out3[0].weights - weights).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
-    assert out3[0].weights.dtype == torch.float64
-    assert out6[0].weights.dtype == torch.float32
-    assert np.abs(torch.sum(out4.forward(x) - out3.forward(x)).detach().numpy()) > 0.0
-    assert np.abs(torch.sum(out5.forward(x) - out3.forward(x)).detach().numpy()) > 0.0
-    assert len(list(out4.parameters())) - len(list(out3.parameters())) == 2
-    assert len(list(out7.parameters())) == 1
-    assert len(out5) == 2
+    assert isinstance(out2[1], torch.nn.Tanh)
+    assert out3[0].weights.shape[0] - out2[0].weights.shape[0] == 1
+    assert np.abs(torch.sum(out2.forward(x) - out1.forward(x)).detach().numpy()) > 0.0
+    assert len(out1) == 2
 
     # these tests should fail
-    with pytest.raises(ValueError):
-        OutputLayer(n, m, weights=np.random.randn(n+1, m))
     with pytest.raises(RuntimeError):
-        out6.forward(x)
         out2.forward(x)
+        out3.forward(x)
+        out2.forward(x) - out3.forward(x)
     with pytest.raises(ValueError):
-        OutputLayer(n, m, activation_function='invalid')
+        LayerStack(Linear(n, m), activation_function='invalid')

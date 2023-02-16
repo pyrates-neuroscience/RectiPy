@@ -3,7 +3,7 @@
 
 # imports
 from rectipy.rnn_layer import RNNLayer, SRNNLayer
-from rectipy.ffwd_layer import Linear
+from rectipy.ffwd_layer import Linear, RLSLayer
 from rectipy import Network
 import torch
 import pytest
@@ -185,23 +185,24 @@ def test_3_3_output_layer():
     # add output layers
     net1.add_output_layer(k, weights=out_weights)
     net2.add_output_layer(k, weights=out_weights, activation_function='sigmoid')
-    net3.add_output_layer(k, train='gradient')
-    net4.add_output_layer(k, train='gradient', bias=False)
+    net3.add_output_layer(k, train='gd', activation_function='sigmoid')
+    net4.add_output_layer(k, train='rls')
     net5.add_output_layer(k, dtype=torch.float32)
     net1.compile()
     net2.compile()
     net5.compile()
 
     # these tests should pass
-    assert isinstance(net1.output_layer, torch.nn.Sequential)
-    assert isinstance(net1.output_layer[0], LinearStatic)
-    assert isinstance(net3.output_layer[0], Linear)
-    assert isinstance(net1.output_layer[1], torch.nn.Identity)
+    assert isinstance(net1.output_layer, Linear)
+    assert isinstance(net2.output_layer, torch.nn.Sequential)
+    assert isinstance(net3.output_layer, torch.nn.Sequential)
+    assert isinstance(net4.output_layer, RLSLayer)
+    assert isinstance(net2.output_layer[0], Linear)
     assert isinstance(net2.output_layer[1], torch.nn.Sigmoid)
     assert len(list(net1.parameters())) == 0
-    assert len(list(net3.parameters())) == 2
-    assert len(list(net4.parameters())) == 1
-    assert net5.output_layer[0].weights.dtype == torch.float32
+    assert len(list(net3.parameters())) == 1
+    assert len(list(net4.parameters())) == 0
+    assert net5.output_layer.weights.dtype == torch.float32
     assert tuple(net1.forward(x).shape) == (k,)
     assert np.mean(np.abs(net1.forward(x).detach().numpy() - net2.forward(x).detach().numpy())) > 0.0
     net1.remove_output_layer()
@@ -285,8 +286,8 @@ def test_3_5_parameters():
     assert len(list(net2.parameters())) == 2
 
     # add input layers
-    net1.add_input_layer(m, train=True)
-    net2.add_input_layer(m, train=False)
+    net1.add_input_layer(m, train="gd")
+    net2.add_input_layer(m, train=None)
     net1.compile()
     net2.compile()
 
@@ -295,14 +296,14 @@ def test_3_5_parameters():
     assert len(list(net2.parameters())) == 2
 
     # add output layers
-    net1.add_output_layer(k, train=True, bias=False)
-    net2.add_output_layer(k, train=True, bias=True)
+    net1.add_output_layer(k, train="gd")
+    net2.add_output_layer(k, train="rls")
     net1.compile()
     net2.compile()
 
     # test number of parameters
     assert len(list(net1.parameters())) == 2
-    assert len(list(net2.parameters())) == 4
+    assert len(list(net2.parameters())) == 2
 
 
 def test_3_6_simulation():

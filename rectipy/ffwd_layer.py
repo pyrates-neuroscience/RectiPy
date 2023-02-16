@@ -1,6 +1,6 @@
 import torch
 from torch.nn import Module, Sequential, Tanh, Softmax, Softmin, Sigmoid, Identity
-from typing import Iterator, Optional
+from typing import Iterator, Union
 import numpy as np
 from .utility import to_device
 
@@ -9,7 +9,7 @@ class Linear(Module):
 
     _tensors = ["weights"]
 
-    def __init__(self, n_in: int, n_out: int, weights: Optional[np.ndarray, torch.Tensor] = None,
+    def __init__(self, n_in: int, n_out: int, weights: Union[np.ndarray, torch.Tensor] = None,
                  dtype: torch.dtype = torch.float64, detach: bool = True, **kwargs):
 
         super().__init__()
@@ -31,9 +31,11 @@ class Linear(Module):
         if detach:
             self.detach()
         else:
+            train_params = kwargs.pop("train_params", self._tensors)
             for key in self._tensors:
                 val = getattr(self, key)
-                if val.requires_grad:
+                if key in train_params:
+                    val.requires_grad = True
                     self.train_params.append(val)
 
     def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
@@ -56,18 +58,11 @@ class Linear(Module):
             val.detach()
 
 
-class GradientDescentLayer(Linear):
-
-    def __new__(cls, n_in: int, n_out: int, weights: Optional[np.ndarray, torch.Tensor] = None,
-                dtype: torch.dtype = torch.float64, **kwargs) -> Linear:
-        return Linear(n_in, n_out, weights=weights, dtype=dtype, detach=False, **kwargs)
-
-
 class RLSLayer(Linear):
 
     _tensors = ["weights", "P"]
 
-    def __init__(self, n_in: int, n_out: int, weights: Optional[np.ndarray, torch.Tensor] = None,
+    def __init__(self, n_in: int, n_out: int, weights: Union[np.ndarray, torch.Tensor] = None,
                  dtype: torch.dtype = torch.float64, beta: float = 1.0, delta: float = 1.0):
         """General form of the extended recursive least-squares algorithm as described in [1]_.
 
@@ -93,17 +88,23 @@ class RLSLayer(Linear):
         .. [1] Principe et al. (2011) Kernel Adaptive Filtering: A Comprehensive Introduction. John Wiley & Sons.
         """
 
+        # check inputs for correctness
+        if beta > 1 or beta < 0:
+            raise ValueError("Parameter beta should be a positive scalar between 0 and 1.")
+        if delta < 0:
+            raise ValueError("Parameter delta should be a positive scalar.")
+
         # set RLS-specific attributes
         self.delta = delta
         self.beta_sq = beta ** 2
         self.beta_sq_inv = 1.0 / self.beta_sq
-        self.P = delta * torch.eye(self.n_in, device=weights.device, dtype=dtype)
+        self.P = delta * torch.eye(n_in, dtype=dtype)
         self.loss = 0
 
         # call super method
-        super().__init__(n_in, n_out, weights, dtype=dtype, detach=True)
+        super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=True)
 
-    def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, y: torch.Tensor = None) -> torch.Tensor:
 
         # predict target vector y
         y_pred = super().forward(x)
@@ -131,7 +132,7 @@ class RLSLayer(Linear):
 
 class LayerStack(Sequential):
 
-    def __new__(cls, layer: Linear, activation_function: str = None):
+    def __init__(self, layer: Linear, activation_function: str = None):
 
         # define output function
         if activation_function is None:
@@ -148,11 +149,16 @@ class LayerStack(Sequential):
             raise ValueError(f"Invalid keyword argument `activation_function`: {activation_function} is not a valid "
                              f"option. See the docstring for `Network.add_output_layer` for valid options.")
 
-        # define output layer
-        return Sequential(layer, activation_function)
+        # call super class
+        super().__init__(layer, activation_function)
 
     def to(self, device: str, **kwargs):
         super().to(device=torch.device(device), **kwargs)
         for layer in self:
             layer.to(device)
         return self
+
+    def parameters(self, recurse: bool = True) -> Iterator:
+        for layer in self:
+            for p in layer.parameters(recurse):
+                yield p

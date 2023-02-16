@@ -2,7 +2,7 @@ import torch
 from torch.nn import Sequential
 from typing import Union, Iterator, Callable, Tuple, Optional
 from .rnn_layer import RNNLayer, SRNNLayer
-from .ffwd_layer import GradientDescentLayer, LayerStack, RLSLayer, Linear
+from .ffwd_layer import LayerStack, RLSLayer, Linear
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
@@ -239,10 +239,13 @@ class Network:
 
         # initialize input layer
         kwargs.update({"n_in": m, "n_out": self.n, "weights": weights, "dtype": dtype})
-        if train == "gd":
-            input_layer = GradientDescentLayer(n_in=m, n_out=self.n, weights=weights, dtype=dtype)
+        if train is None:
+            input_layer = Linear(n_in=m, n_out=self.n, weights=weights, dtype=dtype, detach=True)
+        elif train == "gd":
+            input_layer = Linear(n_in=m, n_out=self.n, weights=weights, dtype=dtype, detach=False)
         else:
-            input_layer = Linear(n_in=m, n_out=self.n, weights=weights, dtype=dtype)
+            raise ValueError("Invalid option for keyword argument `train`. Please see the docstring of "
+                             "`Network.add_input_layer` for valid options.")
 
         # add layer to model
         self.input_layer = input_layer.to(self.device)
@@ -287,12 +290,15 @@ class Network:
 
         # initialize output layer
         kwargs.update({"n_in": self.n, "n_out": k, "weights": weights, "dtype": dtype})
-        if train == "rls":
-            output_layer = RLSLayer(**kwargs)
+        if train is None:
+            output_layer = Linear(**kwargs, detach=True)
         elif train == "gd":
-            output_layer = GradientDescentLayer(**kwargs)
+            output_layer = Linear(**kwargs, detach=False)
+        elif train == "rls":
+            output_layer = RLSLayer(**kwargs)
         else:
-            output_layer = Linear(**kwargs)
+            raise ValueError("Invalid option for keyword argument `train`. Please see the docstring of "
+                             "`Network.add_output_layer` for valid options.")
 
         # add activation function to output layer
         if activation_function:

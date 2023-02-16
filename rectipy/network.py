@@ -3,7 +3,7 @@ from torch.nn import Sequential
 from typing import Union, Iterator, Callable, Tuple, Optional
 from .rnn_layer import RNNLayer, SRNNLayer
 from .ffwd_layer import LayerStack, RLSLayer, Linear
-from .utility import retrieve_from_dict, add_op_name, overload
+from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
 import numpy as np
@@ -36,6 +36,7 @@ class Network:
         self.rnn_layer = rnn_layer
         self.input_layer = None
         self.output_layer = None
+        self.feedback_layer = None
         self._var_map = var_map if var_map else {}
         self._model = None
         self.device = device
@@ -58,8 +59,11 @@ class Network:
             self.compile()
             return len(self._model)
 
-    def __call__(self, *args):
-        if len(args) > 1:
+    def __call__(self, *args, **kwargs):
+        n = len(args)
+        if n == 3:
+            return self.forward_train_fb(*args)
+        if n == 2:
             return self.forward_train(*args)
         return self.forward(*args)
 
@@ -106,6 +110,7 @@ class Network:
         Network
             Instance of `Network`.
         """
+        # TODO: Allow to create networks without any recurrent weights (recurrence can also come from feedback)
 
         # add operator key to variable names
         var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'in_net': spike_var,
@@ -359,6 +364,12 @@ class Network:
             return self.train_gd(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
         if method == "rls":
             return self.train_rls(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        if method == "force":
+            if "feedback_weights" not in kwargs:
+                n_out = inputs.shape[1] if self.input_layer is None else self.input_layer.weights.shape[0]
+                n_in = targets.shape[1]
+                kwargs["feedback_weights"] = torch.randn(n_out, n_in, device=self.device, dtype=targets.dtype)
+            return self.train_rls(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
         else:
             raise ValueError("Invalid training method. Please see the docstring of `Network.train` for valid choices "
                              "of the keyword argument 'method'.")
@@ -502,7 +513,8 @@ class Network:
         # set up model
         if self.output_layer is None:
             self.add_output_layer(k=targets.shape[1], train="rls", **kwargs)
-        model = self.compile() if self._model is None else self._model
+        if self._model is None:
+            self.compile()
 
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
@@ -514,11 +526,11 @@ class Network:
 
         t0 = perf_counter()
         if feedback_weights is None:
-            obs = self._train_nofb(inp_tensor, target_tensor, model, obs, rec_vars, sampling_steps=sampling_steps,
+            obs = self._train_nofb(inp_tensor, target_tensor, obs, rec_vars, sampling_steps=sampling_steps,
                                    verbose=verbose)
         else:
             W_fb = torch.tensor(feedback_weights, device=self.device)
-            obs = self._train_fb(inp_tensor, target_tensor, W_fb, model, obs, rec_vars, sampling_steps=sampling_steps,
+            obs = self._train_fb(inp_tensor, target_tensor, W_fb, obs, rec_vars, sampling_steps=sampling_steps,
                                  verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1 - t0} s.')
@@ -664,7 +676,7 @@ class Network:
                 p.requires_grad = True
         return self._model
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """Forward method as implemented for any `torch.Module`.
 
         Parameters
@@ -679,8 +691,7 @@ class Network:
         """
         return self._model(x)
 
-    @overload
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def forward_train(self, x: Union[torch.Tensor, np.ndarray], y: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """Forward method for training an output layer that has an intrinsic weight-updating algorithm.
 
         Parameters
@@ -699,8 +710,8 @@ class Network:
             x = layer(x)
         return self._model[-1](x, y)
 
-    @overload
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def forward_train_fb(self, x: Union[torch.Tensor, np.ndarray], y: Union[torch.Tensor, np.ndarray],
+                         z: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """Forward method for training an output layer that has an intrinsic weight-updating algorithm and receives
         additional feedback from the .
 
@@ -710,15 +721,39 @@ class Network:
             Input tensor.
         y
             Target tensor.
+        z
+            Feedback tensor.
 
         Returns
         -------
         torch.Tensor
             Output tensor.
         """
-        for layer in self._model[:-1]:
+        for layer in self._model[:-2]:
             x = layer(x)
+        x = self._model[-2](x + z)
         return self._model[-1](x, y)
+
+    def forward_fb(self, x: Union[torch.Tensor, np.ndarray], z: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        """Forward method for training an output layer that has an intrinsic weight-updating algorithm and receives
+        additional feedback from the .
+
+        Parameters
+        ----------
+        x
+            Input tensor.
+        z
+            Feedback tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
+        """
+        for layer in self._model[:-2]:
+            x = layer(x)
+        x = self._model[-2](x + z)
+        return self._model[-1](x)
 
     def parameters(self, recurse: bool = True) -> Iterator:
         """Yields the trainable parameters of the network model.
@@ -803,15 +838,15 @@ class Network:
                 print(f'Epoch loss: {epoch_loss}.')
                 print('')
 
-    def _train_nofb(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, obs: Observer, rec_vars: list,
+    def _train_nofb(self, inp: torch.Tensor, target: torch.Tensor, obs: Observer, rec_vars: list,
                     sampling_steps: int = 100, verbose: bool = False):
 
-        out_layer = model[-1]
+        out_layer = self._model[-1]
         steps = inp.shape[0]
         for step in range(steps):
 
             # forward pass
-            prediction = model(inp[step, :], target[step, :])
+            prediction = self.forward_train(inp[step, :], target[step, :])
 
             # results storage
             if step % sampling_steps == 0:
@@ -821,21 +856,21 @@ class Network:
 
         return obs
 
-    def _train_fb(self, inp: torch.Tensor, target: torch.Tensor, W_fb: torch.Tensor, model: Sequential, obs: Observer,
-                  rec_vars: list, sampling_steps: int = 100, verbose: bool = False):
+    def _train_fb(self, inp: torch.Tensor, target: torch.Tensor, W_fb: torch.Tensor, obs: Observer, rec_vars: list,
+                  sampling_steps: int = 100, verbose: bool = False):
 
-        out_layer = model[-1]
+        out_layer = self._model[-1]
         steps = inp.shape[0]
 
         # get initial step done prior to the loop
-        prediction = model(inp[0, :], target[0, :])
+        prediction = self.forward_train(inp[0, :], target[0, :])
         obs.record(0, prediction, out_layer.loss, [self[v] for v in rec_vars])
 
         # loop over remaining steps
         for step in range(1, steps):
 
             # forward pass
-            prediction = model(inp[step, :] + W_fb @ prediction, target[step, :])
+            prediction = self.forward_train_fb(inp[step, :], target[step, :], W_fb @ prediction)
 
             # results storage
             if step % sampling_steps == 0:

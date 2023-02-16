@@ -10,7 +10,7 @@ li_op:
   equations: "v' = -v/tau + k*r_in + I_ext + eta"
   variables:
     v: output(0.0)
-    tau: 1.0
+    tau: 10.0
     k: 1.0
     eta: 0.0
     r_in: input(0.0)

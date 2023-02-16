@@ -16,29 +16,25 @@ device = "cuda:0"
 
 # model parameters
 node = "model_templates.base_templates.tanh_node"
-N = 10
-m = 3
-J = np.random.uniform(low=-1.0, high=1.0, size=(N, N))
+N = 20
+J = np.random.uniform(low=-1.0, high=1.0, size=(N, N))*5.0
+J0 = np.random.uniform(low=-1.0, high=1.0, size=(N, N))
 D = np.random.choice([1.0, 2.0, 3.0], size=(N, N))
-W_out = np.random.randn(m, N)
 S = D*0.3
-k0 = np.random.uniform(0.1, 10.0)
-tau0 = np.random.uniform(0.1, 10.0)
-u_idx = np.arange(0, N)
+dt = 1e-2
 
 # initialize networks
-target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J,
+target_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J, dt=dt,
                                edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
                                input_var="li_op/I_ext", output_var="li_op/v", clear=True, float_precision="float64",
-                               file_name='target_net', node_vars={'all/li_op/v': np.random.randn(N)}, device=device)
-target_net.add_output_layer(m, weights=W_out, train=None, activation_function=None)
+                               file_name='target_net', device=device, node_vars={'all/li_op/v': np.random.randn(N)})
 
-learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J,
+learning_net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=J0, dt=dt,
                                  edge_attr={'delay': D, 'spread': S}, source_var="tanh_op/r", target_var="li_op/r_in",
                                  input_var="li_op/I_ext", output_var="li_op/v", clear=False, float_precision="float64",
-                                 node_vars={"all/li_op/k": k0, "all/li_op/tau": tau0},
+                                 node_vars={'all/li_op/v': np.random.randn(N)},
                                  file_name='learning_net', device=device)
-learning_net.add_output_layer(m, train="rls")
+learning_net.add_output_layer(N, train="rls", beta=0.999, delta=10.0)
 
 # compile networks
 target_net.compile()
@@ -51,15 +47,13 @@ learning_net.compile()
 tol = 1e-5
 loss = 1.0
 max_steps = 100000
-disp_steps = 100
-test_steps = 1000
+test_steps = 2000
 epsilon = 0.999
 
 # input parameters
-dt = 1e-3
-freq = 0.2
-amp = 0.1
-W_fb = torch.randn(N, m, device=device)
+freq = 0.01
+amp = 2.0
+W_fb = torch.randn(N, N, device=device, dtype=torch.float64)
 
 # optimization
 ##############
@@ -67,12 +61,12 @@ W_fb = torch.randn(N, m, device=device)
 # optimization loop
 losses = []
 step = 0
-x = np.zeros((m,), dtype=np.float64)
+x = torch.zeros((N,), dtype=torch.float64, device=device)
 while loss > tol and step < max_steps:
 
     inp = np.sin(2 * np.pi * freq * step * dt) * amp
-    y = target_net(inp)
-    x = learning_net(inp + W_fb @ x, y)
+    y = target_net.forward(inp)
+    x = learning_net.forward_train_fb(inp, y, W_fb @ x)
     loss = epsilon*loss + (1-epsilon)*learning_net[-1].loss.detach().cpu().numpy()
     losses.append(loss)
     step += 1
@@ -84,10 +78,11 @@ while loss > tol and step < max_steps:
 print("Starting testing...")
 predictions = []
 targets = []
+prediction = torch.zeros((N,), dtype=torch.float64, device=device)
 for step in range(test_steps):
     inp = np.sin(2 * np.pi * freq * step * dt) * amp
-    prediction = learning_net(inp)
-    target = target_net(inp)
+    prediction = learning_net.forward_fb(inp, W_fb @ prediction)
+    target = target_net.forward(inp)
     predictions.append(prediction.detach().cpu().numpy())
     targets.append(target.detach().cpu().numpy())
 print("Finished.")

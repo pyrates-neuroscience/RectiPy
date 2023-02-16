@@ -68,6 +68,12 @@ Again, this will also install the dependencies of the software listed below.
 
 You can find a detailed documentation and various use examples at our [readthedocs](https://rectipy.readthedocs.io/en/latest/) website.
 
+## References
+
+If you use this framework, please cite:
+
+[Gast, R., Knösche, T. R. & Kennedy, A. (2023). PyRates - A Code-Generation Tool for Dynamical Systems Modeling. arXiv:2302.03763.](https://arxiv.org/abs/2302.03763)
+
 ## Contact
 
 If you have any questions, want to contribute to the software, or just get in touch, feel free to post an issue or contact [Richard Gast](https://www.richardgast.me).

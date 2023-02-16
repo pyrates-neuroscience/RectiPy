@@ -67,7 +67,8 @@ class RLSLayer(Linear):
 
     def __init__(self, n_in: int, n_out: int, weights: Union[np.ndarray, torch.Tensor] = None,
                  dtype: torch.dtype = torch.float64, beta: float = 1.0, delta: float = 1.0):
-        """General form of the extended recursive least-squares algorithm as described in [1]_.
+        """General form of the extended recursive least-squares algorithm as described in [1]_. Can be used to implement
+        readout weight learning as in
 
         Parameters
         ----------

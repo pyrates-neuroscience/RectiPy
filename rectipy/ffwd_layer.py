@@ -100,8 +100,7 @@ class RLSLayer(Linear):
 
         # set RLS-specific attributes
         self.delta = delta
-        self.beta_sq = beta ** 2
-        self.beta_sq_inv = 1.0 / self.beta_sq
+        self.beta_inv = 1.0 / beta
         self.P = delta * torch.eye(n_in, dtype=dtype)
         self.loss = 0
 
@@ -118,16 +117,16 @@ class RLSLayer(Linear):
         # calculate current error
         err = y - y_pred
 
-        # calculate the gain
-        k = torch.matmul(self.P, x*self.beta_sq_inv)
-        k /= (1.0 + torch.inner(x, k))
+        # calculate gain
+        k = self.P @ x * self.beta_inv
+        k /= 1.0 + x @ k
 
         # update the weights
-        self.weights.add_(torch.outer(err, k))
+        self.weights.add_(err * k)
 
         # update the error correlation matrix
-        self.P -= torch.outer(k, torch.inner(x, self.P))
-        self.P *= self.beta_sq_inv
+        self.P.add_(-(torch.outer(k, x @ self.P)))
+        self.P.mul_(self.beta_inv)
 
         # update loss
         self.loss = torch.inner(err, err)

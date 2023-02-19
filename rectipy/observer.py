@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from typing import Iterable
+from typing import Iterable, Union
 from pandas import DataFrame
 from .utility import retrieve_from_dict
 
@@ -59,7 +59,8 @@ class Observer:
         data = np.asarray([self[v] for v in columns]).T
         return DataFrame(index=self._recordings["step"], data=data, columns=columns)
 
-    def record(self, step: int, output: torch.Tensor, loss: float, record_vars: Iterable[torch.Tensor]) -> None:
+    def record(self, step: int, output: torch.Tensor, loss: Union[float, torch.Tensor],
+               record_vars: Iterable[torch.Tensor]) -> None:
         """Performs a single recording steps.
 
         Parameters
@@ -85,6 +86,10 @@ class Observer:
         if self._record_out:
             recs['out'].append(output.detach().cpu().numpy())
         if self._record_loss:
+            try:
+                loss = loss.detach().cpu().numpy()
+            except AttributeError:
+                pass
             recs['loss'].append(loss)
 
     def plot(self, y: str, x: str = None, ax: plt.Axes = None, **kwargs) -> plt.Axes:

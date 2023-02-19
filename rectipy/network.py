@@ -8,6 +8,7 @@ from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
 import numpy as np
 from time import perf_counter
+from multipledispatch import dispatch
 
 
 class Network:
@@ -60,12 +61,7 @@ class Network:
             return len(self._model)
 
     def __call__(self, *args, **kwargs):
-        n = len(args)
-        if n == 3:
-            return self.forward_train_fb(*args)
-        if n == 2:
-            return self.forward_train(*args)
-        return self.forward(*args)
+        return self.forward(*args, **kwargs)
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
@@ -376,7 +372,7 @@ class Network:
 
     def train_gd(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
                  loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
-                 optimizer_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
+                 update_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
         """Optimize model parameters such that the model output matches the provided targets as close as possible.
 
         Parameters
@@ -412,7 +408,7 @@ class Network:
             Learning rate.
         sampling_steps
             Number of training steps at which to record observables.
-        optimizer_steps
+        update_steps
             Number of training steps after which to perform an update of the trainable parameters based on the
             accumulated gradients.
         verbose
@@ -460,17 +456,17 @@ class Network:
         t0 = perf_counter()
         if len(inp_tensor.shape) > 2:
             self._train_gd_epochs(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs,
-                                  step_kwargs, sampling_steps=sampling_steps, optim_steps=optimizer_steps,
+                                  step_kwargs, sampling_steps=sampling_steps, optim_steps=update_steps,
                                   verbose=verbose)
         else:
             self._train_gd(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                           sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
+                           sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
 
     def train_rls(self, inputs: np.ndarray, targets: np.ndarray,  feedback_weights: np.ndarray = None,
-                  sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
+                  update_steps: int = 1, sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         r"""Finds model parameters $w$ such that $||Xw - y||_2$ is minimized, where $X$ contains the neural activity and
         $y$ contains the targets.
 
@@ -485,6 +481,8 @@ class Network:
         feedback_weights
             `m x k` array of synaptic weights. If provided, a feedback connections is established with these weights,
             that projects the network output back to the RNN layer.
+        update_steps
+            Each `update_steps` an update of the trainable parameters will be performed.
         sampling_steps
             Number of training steps at which to record observables.
         verbose
@@ -526,18 +524,18 @@ class Network:
 
         t0 = perf_counter()
         if feedback_weights is None:
-            obs = self._train_nofb(inp_tensor, target_tensor, obs, rec_vars, sampling_steps=sampling_steps,
-                                   verbose=verbose)
+            obs = self._train_nofb(inp_tensor, target_tensor, obs, rec_vars, update_steps=update_steps,
+                                   sampling_steps=sampling_steps, verbose=verbose, **kwargs)
         else:
             W_fb = torch.tensor(feedback_weights, device=self.device)
-            obs = self._train_fb(inp_tensor, target_tensor, W_fb, obs, rec_vars, sampling_steps=sampling_steps,
-                                 verbose=verbose)
+            obs = self._train_fb(inp_tensor, target_tensor, W_fb, obs, rec_vars, update_steps=update_steps,
+                                 sampling_steps=sampling_steps, verbose=verbose, **kwargs)
         t1 = perf_counter()
         print(f'Finished optimization after {t1 - t0} s.')
         return obs
 
-    def test(self, inputs: np.ndarray, targets: np.ndarray, loss: str = 'mse', loss_kwargs: dict = None,
-             sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
+    def test(self, inputs: np.ndarray, targets: np.ndarray, feedback_weights: np.ndarray = None, loss: str = 'mse',
+             loss_kwargs: dict = None, sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
         """Test the model performance on a set of inputs and target outputs, with frozen model parameters.
 
         Parameters
@@ -548,6 +546,9 @@ class Network:
         targets
             `T x k` array of targets, where `T` is the number of testing steps and `k` is the number of outputs of the
             network.
+        feedback_weights
+            `m x k` array of synaptic weights. If provided, a feedback connections is established with these weights,
+            that projects the network output back to the RNN layer.
         loss
             Name of the loss function that should be used to calculate the loss on the test data. See `Network.train`
             for available options.
@@ -574,7 +575,8 @@ class Network:
         target_tensor = torch.tensor(targets, device=self.device)
 
         # set up model
-        model = self.compile() if self._model is None else self._model
+        if self._model is None:
+            self.compile()
 
         # initialize loss function
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
@@ -584,26 +586,13 @@ class Network:
         obs = Observer(dt=self.rnn_layer.dt, **obs_kwargs)
         rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
 
-        # test loop
-        ###########
-
-        loss_total = 0.0
-        steps = inp_tensor.shape[0]
-        with torch.no_grad():
-            for step in range(steps):
-
-                # forward pass
-                prediction = model(inp_tensor[step, :])
-
-                # loss calculation
-                error = loss(prediction, target_tensor[step, :])
-                loss_total += error.item()
-
-                # results storage
-                if step % sampling_steps == 0:
-                    if verbose:
-                        print(f'Progress: {step}/{steps} test steps finished.')
-                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
+        # call testing method
+        if feedback_weights is None:
+            obs, loss_total = self._test_nofb(inp_tensor, target_tensor, loss, obs, rec_vars, sampling_steps, verbose)
+        else:
+            W_fb = torch.tensor(feedback_weights, device=self.device)
+            obs, loss_total = self._test_fb(inp_tensor, target_tensor, W_fb, loss, obs, rec_vars, sampling_steps,
+                                            verbose)
 
         return obs, loss_total
 
@@ -676,6 +665,7 @@ class Network:
                 p.requires_grad = True
         return self._model
 
+    @dispatch(object)
     def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """Forward method as implemented for any `torch.Module`.
 
@@ -691,37 +681,15 @@ class Network:
         """
         return self._model(x)
 
-    def forward_train(self, x: Union[torch.Tensor, np.ndarray], y: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        """Forward method for training an output layer that has an intrinsic weight-updating algorithm.
+    @dispatch(object, object)
+    def forward(self, x: Union[torch.Tensor, np.ndarray], y: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        """Forward method for a network model that receives additional feedback from the last layer to the rnn layer.
 
         Parameters
         ----------
         x
             Input tensor.
         y
-            Target tensor.
-
-        Returns
-        -------
-        torch.Tensor
-            Output tensor.
-        """
-        for layer in self._model[:-1]:
-            x = layer(x)
-        return self._model[-1](x, y)
-
-    def forward_train_fb(self, x: Union[torch.Tensor, np.ndarray], y: Union[torch.Tensor, np.ndarray],
-                         z: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        """Forward method for training an output layer that has an intrinsic weight-updating algorithm and receives
-        additional feedback from the .
-
-        Parameters
-        ----------
-        x
-            Input tensor.
-        y
-            Target tensor.
-        z
             Feedback tensor.
 
         Returns
@@ -729,31 +697,16 @@ class Network:
         torch.Tensor
             Output tensor.
         """
-        for layer in self._model[:-2]:
+        if len(self._model) < 2:
+            return self._model(x + y)
+        pos = 0 if isinstance(self._model[0], RNNLayer) else 1
+        for layer in self._model[:pos]:
             x = layer(x)
-        x = self._model[-2](x + z)
-        return self._model[-1](x, y)
-
-    def forward_fb(self, x: Union[torch.Tensor, np.ndarray], z: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        """Forward method for training an output layer that has an intrinsic weight-updating algorithm and receives
-        additional feedback from the .
-
-        Parameters
-        ----------
-        x
-            Input tensor.
-        z
-            Feedback tensor.
-
-        Returns
-        -------
-        torch.Tensor
-            Output tensor.
-        """
-        for layer in self._model[:-2]:
-            x = layer(x)
-        x = self._model[-2](x + z)
-        return self._model[-1](x)
+        x = self._model[pos](x + y)
+        try:
+            return self._model[pos+1](x)
+        except IndexError:
+            return x
 
     def parameters(self, recurse: bool = True) -> Iterator:
         """Yields the trainable parameters of the network model.
@@ -776,7 +729,7 @@ class Network:
 
     def _train_gd(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
                   optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict,
-                  sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
+                  sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False) -> Observer:
 
         steps = inp.shape[0]
         for step in range(steps):
@@ -799,9 +752,12 @@ class Network:
                     print(f'Progress: {step}/{steps} training steps finished.')
                 obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
 
+        return obs
+
     def _train_gd_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
                          optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
-                         step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
+                         step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False
+                         ) -> Observer:
 
         if inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
@@ -838,47 +794,143 @@ class Network:
                 print(f'Epoch loss: {epoch_loss}.')
                 print('')
 
-    def _train_nofb(self, inp: torch.Tensor, target: torch.Tensor, obs: Observer, rec_vars: list,
-                    sampling_steps: int = 100, verbose: bool = False):
+        return obs
 
-        out_layer = self._model[-1]
+    def _train_nofb(self, inp: torch.Tensor, targets: torch.Tensor, obs: Observer, rec_vars: list, update_steps: int = 1,
+                    sampling_steps: int = 100, verbose: bool = False, tol: float = 1e-3, loss_beta: float = 0.9
+                    ) -> Observer:
+
+        out_layer = self._model.pop(-1)
         steps = inp.shape[0]
+        loss = 1.0
+
         for step in range(steps):
 
-            # forward pass
-            prediction = self.forward_train(inp[step, :], target[step, :])
+            if step % update_steps == 0:
+
+                # perform weight update
+                x = self.forward(inp)
+                y_hat = out_layer.forward(x)
+                y = targets[step, :]
+                out_layer.update(x, y_hat, y)
+
+            else:
+
+                # perform forward pass
+                y_hat = self.forward(inp[step, :])
 
             # results storage
             if step % sampling_steps == 0:
+                loss_tmp = out_layer.loss
+                obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])
+                loss = loss_beta * loss + (1.0-loss_beta)*loss_tmp
                 if verbose:
                     print(f'Progress: {step}/{steps} training steps finished.')
-                obs.record(step, prediction, out_layer.loss, [self[v] for v in rec_vars])
+                    print(f'Current loss: {loss}.')
+                    print('')
+
+            # break condition
+            if loss < tol:
+                break
+
+        # add output layer to model again
+        self._model.append(out_layer)
 
         return obs
 
-    def _train_fb(self, inp: torch.Tensor, target: torch.Tensor, W_fb: torch.Tensor, obs: Observer, rec_vars: list,
-                  sampling_steps: int = 100, verbose: bool = False):
+    def _train_fb(self, inp: torch.Tensor, targets: torch.Tensor, W_fb: torch.Tensor, obs: Observer, rec_vars: list,
+                  update_steps: int = 1, sampling_steps: int = 100, verbose: bool = False, tol: float = 1e-3,
+                  loss_beta: float = 0.9) -> Observer:
 
-        out_layer = self._model[-1]
+        out_layer = self._model.pop(-1)
         steps = inp.shape[0]
 
         # get initial step done prior to the loop
-        prediction = self.forward_train(inp[0, :], target[0, :])
-        obs.record(0, prediction, out_layer.loss, [self[v] for v in rec_vars])
+        x = self.forward(inp[0, :], W_fb @ targets[0, :])
+        y_hat = out_layer.forward(x)
+        obs.record(0, y_hat, out_layer.loss, [self[v] for v in rec_vars])
+        loss = 1.0
+        for step in range(steps):
 
-        # loop over remaining steps
-        for step in range(1, steps):
+            if step % update_steps == 0:
 
-            # forward pass
-            prediction = self.forward_train_fb(inp[step, :], target[step, :], W_fb @ prediction)
+                # perform weight update
+                x = self.forward(inp[step, :], W_fb @ y_hat)
+                y_hat = out_layer.forward(x)
+                y = targets[step, :]
+                out_layer.update(x, y_hat, y)
+
+            else:
+
+                # perform forward pass
+                x = self.forward(inp[step, :], W_fb @ y_hat)
+                y_hat = out_layer.forward(x)
 
             # results storage
             if step % sampling_steps == 0:
+                loss_tmp = out_layer.loss
+                obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])
+                loss = loss_beta * loss + (1.0 - loss_beta) * loss_tmp
                 if verbose:
                     print(f'Progress: {step}/{steps} training steps finished.')
-                obs.record(step, prediction, out_layer.loss, [self[v] for v in rec_vars])
+                    print(f'Current loss: {loss}.')
+                    print('')
+
+            # break condition
+            if loss < tol:
+                break
+
+        # add output layer to model again
+        self._model.append(out_layer)
 
         return obs
+
+    def _test_nofb(self, inp: torch.Tensor, targets: torch.Tensor, loss: Callable, obs: Observer, rec_vars: list,
+                   sampling_steps: int = 1, verbose: bool = True) -> Tuple[Observer, float]:
+
+        loss_total = 0.0
+        steps = inp.shape[0]
+        with torch.no_grad():
+            for step in range(steps):
+
+                # forward pass
+                prediction = self.forward(inp[step, :])
+
+                # loss calculation
+                error = loss(prediction, targets[step, :])
+                loss_total += error.item()
+
+                # results storage
+                if step % sampling_steps == 0:
+                    if verbose:
+                        print(f'Progress: {step}/{steps} test steps finished.')
+                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
+
+        return obs, loss_total
+
+    def _test_fb(self, inp: torch.Tensor, targets: torch.Tensor, W_fb: torch.Tensor, loss: Callable, obs: Observer,
+                 rec_vars: list, sampling_steps: int = 1, verbose: bool = True) -> Tuple[Observer, float]:
+
+        loss_total = 0.0
+        steps = inp.shape[0]
+        prediction = self.forward(inp[0, :], W_fb @ targets[0, :])
+        with torch.no_grad():
+            for step in range(steps):
+
+                # forward pass
+                prediction = self.forward(inp[step, :], W_fb @ prediction)
+
+                # loss calculation
+                error = loss(prediction, targets[step, :])
+                loss_total += error.item()
+
+                # results storage
+                if step % sampling_steps == 0:
+                    if verbose:
+                        print(f'Progress: {step}/{steps} test steps finished.')
+                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
+
+        return obs, loss_total
 
     def _relabel_var(self, var: str) -> str:
         try:

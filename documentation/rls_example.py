@@ -33,70 +33,47 @@ net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.ta
                         node_vars={"all/li_op/k": k, "all/li_op/tau": tau, 'all/li_op/v': np.random.randn(N)},
                         file_name='learning_net', device=device)
 
-# add RLS learning layer
-net.add_output_layer(1, train="rls", beta=0.9, delta=1.0)
+# add RLS learning layer and input layer
+net.add_input_layer(1)
+net.add_output_layer(1, train="rls", beta=0.99, delta=1.0, alpha=1.0)
 net.compile()
 
 # online optimization parameters
 ################################
 
 # meta parameters
-tol = 1e-5
-loss = 1.0
-max_steps = 1000000
-sample_steps = 10
+steps = 1000000
+sample_steps = 100
 test_steps = 100000
 epsilon = np.float64(0.99)
+tol = 1e-5
 
 # input parameters
 freq = 0.05
 amp = 0.1
-W_fb = torch.randn(N, 1, device=device, dtype=torch.float64)
+W_fb = np.random.randn(N, 1)
 
 # define input
-time = np.linspace(0, max_steps*dt, num=max_steps)
-inp = np.sin(2 * np.pi * freq * time) * amp
-target = inp * np.sin(1 * np.pi * freq * time + 0.5*np.pi) * amp
-# plt.plot(time, inp, color="blue", label="input")
-# plt.plot(time, target, color="orange", label="target")
-# plt.legend()
-# plt.show()
+time = np.linspace(0, steps*dt, num=steps)
+inp = np.zeros((steps, 1))
+target = np.zeros_like(inp)
+inp[:, 0] = np.sin(2 * np.pi * freq * time) * amp
+target[:, 0] = inp[:, 0] * np.sin(1 * np.pi * freq * time + 0.5*np.pi) * amp
 
 # optimization
 ##############
 
-# optimization loop
-losses, train_steps = [], []
-step = 0
-y_hat = torch.zeros((1,), dtype=torch.float64, device=device)
-y_hats = []
-while loss > tol and step < max_steps:
-
-    y_hat = net.forward_train_fb(inp[step], target[step], W_fb @ y_hat)
-    y_hats.append(y_hat.detach().cpu().numpy())
-    step += 1
-    if step % sample_steps == 0:
-        loss = epsilon * loss + (1.0 - epsilon) * net[-1].loss.detach().cpu().numpy()
-        losses.append(loss)
-        train_steps.append(step)
-        print(f"{step} training steps finished. Current loss: {loss}.")
-
-
-plt.plot(y_hats)
+obs = net.train_rls(inp, targets=target, feedback_weights=W_fb, update_steps=1000, verbose=True, record_output=True,
+                    record_loss=True, tol=tol, loss_beta=epsilon, sampling_steps=sample_steps)
+obs.plot("out")
 plt.show()
 
 # model testing
 ###############
 
 print("Starting testing...")
-
-predictions = []
-targets = []
-prediction = torch.zeros((1,), dtype=torch.float64, device=device)
-for step in range(test_steps):
-    prediction = net.forward_fb(inp[step], W_fb @ prediction)
-    predictions.append(prediction.detach().cpu().numpy())
-    targets.append(target[step])
+obs2, loss = net.test(inp[:test_steps, :], target[:test_steps], feedback_weights=W_fb, record_output=True,
+                      record_loss=False, sampling_steps=1, verbose=False)
 print("Finished.")
 
 # plotting
@@ -104,17 +81,17 @@ print("Finished.")
 
 fig, axes = plt.subplots(nrows=3, figsize=(12, 8))
 ax1 = axes[0]
-ax1.plot(predictions)
+obs2.plot("out", ax=ax1)
 ax1.set_title('predictions (testing)')
-ax1.set_xlabel('steps')
+ax1.set_xlabel('test steps')
 ax1.set_ylabel('u')
 ax2 = axes[1]
-ax2.plot(targets)
+ax2.plot(target[:test_steps])
 ax2.set_title('targets (testing)')
-ax2.set_xlabel('steps')
+ax2.set_xlabel('test steps')
 ax2.set_ylabel('u')
 ax3 = axes[2]
-ax3.plot(train_steps, losses)
+obs.plot("loss", ax=ax3)
 ax3.set_title('loss (training)')
 ax3.set_xlabel('training steps')
 ax3.set_ylabel('MSE')

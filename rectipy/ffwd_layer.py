@@ -66,7 +66,7 @@ class RLSLayer(Linear):
     _tensors = ["weights", "P"]
 
     def __init__(self, n_in: int, n_out: int, weights: Union[np.ndarray, torch.Tensor] = None,
-                 dtype: torch.dtype = torch.float64, beta: float = 1.0, delta: float = 1.0):
+                 dtype: torch.dtype = torch.float64, beta: float = 1.0, alpha: float = 1.0, delta: float = 1e-3):
         """General form of the extended recursive least-squares algorithm as described in [1]_. Can be used to implement
         readout weight learning as in
 
@@ -83,8 +83,10 @@ class RLSLayer(Linear):
         beta
             Forgetting rate with 0 < beta <= 1. The smaller beta is, the more importance is given to most recent
             observations over past observations.
-        delta
+        alpha
             Regularization parameter for the initial state of the state-error correlation matrix `P`.
+        delta
+            Rate with which weight updates are performed at each udpate step.
 
         References
         ----------
@@ -97,32 +99,29 @@ class RLSLayer(Linear):
             raise ValueError("Parameter beta should be a positive scalar between 0 and 1.")
         if delta < 0:
             raise ValueError("Parameter delta should be a positive scalar.")
+        if alpha < 0:
+            raise ValueError("Parameter alpha should be a positive scalar.")
 
         # set RLS-specific attributes
         self.delta = delta
         self.beta_inv = 1.0 / beta
-        self.P = delta * torch.eye(n_in, dtype=dtype)
+        self.P = alpha * torch.eye(n_in, dtype=dtype)
         self.loss = 0
 
         # call super method
         super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=True)
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor = None) -> torch.Tensor:
-
-        # predict target vector y
-        y_pred = super().forward(x)
-        if y is None:
-            return y_pred
+    def update(self, x: torch.Tensor, y_hat: torch.Tensor, y: torch.Tensor = None) -> None:
 
         # calculate current error
-        err = y - y_pred
+        err = y - y_hat
 
         # calculate gain
         k = self.P @ x * self.beta_inv
         k /= 1.0 + x @ k
 
         # update the weights
-        self.weights.add_(err * k)
+        self.weights.add_(self.delta * err * k)
 
         # update the error correlation matrix
         self.P.add_(-(torch.outer(k, x @ self.P)))
@@ -130,7 +129,6 @@ class RLSLayer(Linear):
 
         # update loss
         self.loss = torch.inner(err, err)
-        return y_pred
 
 
 class LayerStack(Sequential):

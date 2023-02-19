@@ -58,7 +58,7 @@ time = np.linspace(0, steps*dt, num=steps)
 inp = np.zeros((steps, 1))
 target = np.zeros_like(inp)
 inp[:, 0] = np.sin(2 * np.pi * freq * time) * amp
-target[:, 0] = inp[:, 0] * np.sin(1 * np.pi * freq * time + 0.5*np.pi) * amp
+target[:, 0] = inp[:, 0]/amp * np.sin(1 * np.pi * freq * time + 0.5*np.pi)
 
 # optimization
 ##############

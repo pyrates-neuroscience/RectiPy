@@ -121,7 +121,7 @@ class RLSLayer(Linear):
         k /= 1.0 + x @ k
 
         # update the weights
-        self.weights.add_(self.delta * err * k)
+        self.weights.add_(self.delta * torch.outer(err, k))
 
         # update the error correlation matrix
         self.P.add_(-(torch.outer(k, x @ self.P)))

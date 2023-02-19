@@ -111,7 +111,7 @@ def test_1_2_rls_layer():
     rls1 = RLSLayer(n, m)
     rls2 = RLSLayer(n, m, weights=w1)
     rls3 = RLSLayer(n, m, weights=w1, beta=0.5)
-    rls4 = RLSLayer(n, m, weights=w1, delta=0.5)
+    rls4 = RLSLayer(n, m, weights=w1, alpha=0.5)
 
     # these tests should pass
     #########################
@@ -126,10 +126,11 @@ def test_1_2_rls_layer():
     r1_1 = rls1.forward(x)
     r1_2 = rls1.forward(x)
     for rls in [rls2, rls3, rls4]:
-        rls.forward(x, y)
-    r2 = rls2.forward(x, y)
-    r3 = rls3.forward(x, y)
-    r4 = rls4.forward(x, y)
+        y_hat = rls.forward(x)
+        rls.update(x, y_hat, y)
+    r2 = rls2.forward(x)
+    r3 = rls3.forward(x)
+    r4 = rls4.forward(x)
 
     # test correctness of forward method
     assert r1_1.shape[0] == m
@@ -150,7 +151,7 @@ def test_1_2_rls_layer():
     with pytest.raises(RuntimeError):
         rls1.forward(torch.randn(n+1, dtype=dtype))
         rls1.forward(torch.randn(n, dtype=torch.float32))
-        rls1.forward(x, torch.randn(m+1, dtype=dtype))
+        rls1.update(x, torch.randn(m+1, dtype=dtype), torch.randn(m+1, dtype=dtype))
 
 
 def test_1_3_layerstack():

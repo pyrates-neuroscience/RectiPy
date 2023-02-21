@@ -16,13 +16,14 @@ device = "cuda:0"
 
 # model parameters
 node = "model_templates.base_templates.tanh_node"
-N = 100
+N = 200
+m = 2
 k = 0.9
-tau = 10.0
+tau = np.random.uniform(5.0, 20.0, size=(N,))
 J0 = np.random.randn(N, N)
 J0 /= np.max(np.abs(np.linalg.eigvals(J0)))
-D = np.random.choice([1.0, 2.0, 3.0], size=(N, N))
-S = D*0.3
+D = np.random.choice([2.0, 3.0], size=(N, N))
+S = np.ones_like(D)
 dt = 1e-3
 edge_attr = dict() #{'delay': D, 'spread': S}
 
@@ -34,37 +35,41 @@ net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.ta
                         file_name='learning_net', device=device)
 
 # add RLS learning layer and input layer
-net.add_input_layer(1)
-net.add_output_layer(1, train="rls", beta=0.99, delta=1.0, alpha=1.0)
+net.add_input_layer(m)
+net.add_output_layer(1, train="rls", beta=0.999, delta=1.0, alpha=1.0)
 net.compile()
 
 # online optimization parameters
 ################################
 
 # meta parameters
-steps = 1000000
-sample_steps = 100
+steps = 2000000
+sample_steps = 1000
 test_steps = 100000
 epsilon = np.float64(0.99)
 tol = 1e-5
 
 # input parameters
-freq = 0.05
-amp = 0.1
+f1, f2 = 0.4, 0.01
+amp = 1.0
 W_fb = np.random.randn(N, 1)
 
 # define input
 time = np.linspace(0, steps*dt, num=steps)
-inp = np.zeros((steps, 1))
-target = np.zeros_like(inp)
-inp[:, 0] = np.sin(2 * np.pi * freq * time) * amp
-target[:, 0] = inp[:, 0]/amp * np.sin(1 * np.pi * freq * time + 0.5*np.pi)
+inp = np.zeros((steps, m))
+target = np.zeros((steps, 1))
+inp[:, 0] = np.sin(2 * np.pi * f1 * time) * amp
+inp[:, 1] = np.sin(2 * np.pi * f2 * time) * amp
+target[:, 0] = inp[:, 0] * inp[:, 1] / amp
+
+# plt.plot(target)
+# plt.show()
 
 # optimization
 ##############
 
-obs = net.train_rls(inp, targets=target, feedback_weights=W_fb, update_steps=1000, verbose=True, record_output=True,
-                    record_loss=True, tol=tol, loss_beta=epsilon, sampling_steps=sample_steps)
+obs = net.train_rls(inp, targets=target, update_steps=2000, verbose=True, record_output=True, record_loss=True,
+                    tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb)
 obs.plot("out")
 plt.show()
 
@@ -72,8 +77,8 @@ plt.show()
 ###############
 
 print("Starting testing...")
-obs2, loss = net.test(inp[:test_steps, :], target[:test_steps], feedback_weights=W_fb, record_output=True,
-                      record_loss=False, sampling_steps=1, verbose=False)
+obs2, loss = net.test(inp[:test_steps, :], target[:test_steps], record_output=True, record_loss=False,
+                      sampling_steps=100, verbose=False, feedback_weights=W_fb)
 print("Finished.")
 
 # plotting

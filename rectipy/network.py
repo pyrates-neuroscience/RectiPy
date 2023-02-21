@@ -803,35 +803,38 @@ class Network:
         out_layer = self._model.pop(-1)
         steps = inp.shape[0]
         loss = 1.0
+        with torch.no_grad():
+            for step in range(steps):
 
-        for step in range(steps):
+                if step % update_steps == 0:
 
-            if step % update_steps == 0:
+                    # perform weight update
+                    x = self.forward(inp[step, :])
+                    y_hat = out_layer.forward(x)
+                    y = targets[step, :]
+                    out_layer.update(x, y_hat, y)
 
-                # perform weight update
-                x = self.forward(inp)
-                y_hat = out_layer.forward(x)
-                y = targets[step, :]
-                out_layer.update(x, y_hat, y)
+                else:
 
-            else:
+                    # perform forward pass
+                    y_hat = self.forward(inp[step, :])
 
-                # perform forward pass
-                y_hat = self.forward(inp[step, :])
+                # results storage
+                if step % sampling_steps == 0:
+                    if torch.isnan(out_layer.loss):
+                        print("ABORTING NETWORK TRAINING: Loss in output layer evaluated to a non-finite number.")
+                        break
+                    loss_tmp = out_layer.loss
+                    obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])
+                    loss = loss_beta * loss + (1.0 - loss_beta) * loss_tmp
+                    if verbose:
+                        print(f'Progress: {step}/{steps} training steps finished.')
+                        print(f'Current loss: {loss}.')
+                        print('')
 
-            # results storage
-            if step % sampling_steps == 0:
-                loss_tmp = out_layer.loss
-                obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])
-                loss = loss_beta * loss + (1.0-loss_beta)*loss_tmp
-                if verbose:
-                    print(f'Progress: {step}/{steps} training steps finished.')
-                    print(f'Current loss: {loss}.')
-                    print('')
-
-            # break condition
-            if loss < tol:
-                break
+                    # break condition
+                if loss < tol:
+                    break
 
         # add output layer to model again
         self._model.append(out_layer)
@@ -850,35 +853,39 @@ class Network:
         y_hat = out_layer.forward(x)
         obs.record(0, y_hat, out_layer.loss, [self[v] for v in rec_vars])
         loss = 1.0
-        for step in range(steps):
+        with torch.no_grad():
+            for step in range(steps):
 
-            if step % update_steps == 0:
+                if step % update_steps == 0:
 
-                # perform weight update
-                x = self.forward(inp[step, :], W_fb @ y_hat)
-                y_hat = out_layer.forward(x)
-                y = targets[step, :]
-                out_layer.update(x, y_hat, y)
+                    # perform weight update
+                    x = self.forward(inp[step, :], W_fb @ y_hat)
+                    y_hat = out_layer.forward(x)
+                    y = targets[step, :]
+                    out_layer.update(x, y_hat, y)
 
-            else:
+                else:
 
-                # perform forward pass
-                x = self.forward(inp[step, :], W_fb @ y_hat)
-                y_hat = out_layer.forward(x)
+                    # perform forward pass
+                    x = self.forward(inp[step, :], W_fb @ y_hat)
+                    y_hat = out_layer.forward(x)
 
-            # results storage
-            if step % sampling_steps == 0:
-                loss_tmp = out_layer.loss
-                obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])
-                loss = loss_beta * loss + (1.0 - loss_beta) * loss_tmp
-                if verbose:
-                    print(f'Progress: {step}/{steps} training steps finished.')
-                    print(f'Current loss: {loss}.')
-                    print('')
+                # results storage
+                if step % sampling_steps == 0:
+                    if torch.isnan(out_layer.loss):
+                        print("ABORTING NETWORK TRAINING: Loss in output layer evaluated to a non-finite number.")
+                        break
+                    loss_tmp = out_layer.loss
+                    obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])
+                    loss = loss_beta * loss + (1.0 - loss_beta) * loss_tmp
+                    if verbose:
+                        print(f'Progress: {step}/{steps} training steps finished.')
+                        print(f'Current loss: {loss}.')
+                        print('')
 
-            # break condition
-            if loss < tol:
-                break
+                # break condition
+                if loss < tol:
+                    break
 
         # add output layer to model again
         self._model.append(out_layer)

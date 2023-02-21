@@ -106,7 +106,7 @@ class RLSLayer(Linear):
         self.delta = delta
         self.beta_inv = 1.0 / beta
         self.P = alpha * torch.eye(n_in, dtype=dtype)
-        self.loss = 0
+        self.loss = 0.0
 
         # call super method
         super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=True)
@@ -124,7 +124,7 @@ class RLSLayer(Linear):
         self.weights.add_(self.delta * torch.outer(err, k))
 
         # update the error correlation matrix
-        self.P.add_(-(torch.outer(k, x @ self.P)))
+        self.P.add_(-self.delta*(torch.outer(k, x @ self.P)))
         self.P.mul_(self.beta_inv)
 
         # update loss

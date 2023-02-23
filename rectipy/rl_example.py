@@ -16,9 +16,9 @@ device = "cuda:0"
 
 # model parameters
 node = "model_templates.base_templates.tanh_node"
-N = 600
+N = 200
 m = 2
-k = 0.5
+k = 0.1
 tau = np.random.uniform(10.0, 20.0, size=(N,))
 J0 = np.random.randn(N, N)
 J0 /= np.max(np.abs(np.linalg.eigvals(J0)))
@@ -48,7 +48,7 @@ tol = 1e-4
 
 # input parameters
 f1, f2 = 0.2, 0.02
-amp = 1.5
+amp = 0.9
 W_fb = np.random.randn(N, N)
 W_fb /= np.max(np.abs(np.linalg.eigvals(W_fb)))
 
@@ -66,8 +66,9 @@ target[:, 0] = inp[:, 0] * inp[:, 1] / amp
 # optimization
 ##############
 
-obs = net.train_rl(inp, targets=target, update_steps=100, verbose=True, record_output=True, record_loss=True,
-                   tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb)
+obs = net.train_rl(inp, targets=target, update_steps=10, verbose=True, record_output=True, record_loss=True,
+                   tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb, epsilon=0.999,
+                   delta=0.99, fb_update_steps=1000000, noise=0.01)
 obs.plot("out")
 plt.show()
 

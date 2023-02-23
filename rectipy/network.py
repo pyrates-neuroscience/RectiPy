@@ -966,14 +966,15 @@ class Network:
 
     def _train_rl(self, inp: torch.Tensor, targets: torch.Tensor, W_fb: torch.Tensor, epsilon: float, delta: float,
                   obs: Observer, rec_vars: list, update_steps: int = 1, sampling_steps: int = 100,
-                  verbose: bool = False, tol: float = 1e-3, loss_beta: float = 0.9) -> Observer:
+                  fb_update_steps: int = 100, verbose: bool = False, tol: float = 1e-3, loss_beta: float = 0.9,
+                  noise: float = 1e-2) -> Observer:
 
         out_layer = self._model.pop(-1)
         steps = inp.shape[0]
 
         # extract properties of feedback weights
         sr_0 = torch.max(torch.abs(torch.linalg.eigvals(W_fb)))
-        mask = torch.nonzero(W_fb)
+        mask = 1.0 * (torch.abs(W_fb) > 0)
         fb_size = W_fb.shape
 
         # get initial step done prior to the loop
@@ -981,7 +982,7 @@ class Network:
         y_hat = out_layer.forward(x)
         obs.record(0, y_hat, out_layer.loss, [self[v] for v in rec_vars])
         loss = 1.0
-        loss_rl = loss
+        loss_rl = 1.0
         with torch.no_grad():
             for step in range(steps):
 
@@ -1001,14 +1002,16 @@ class Network:
 
                 # perform feedback weight update
                 loss_tmp = out_layer.loss
-                loss_rl = 1.0/(1.0 + torch.exp(epsilon*loss_rl + (1-epsilon)*loss_tmp))
-                W_new = loss_rl*torch.randn(fb_size, device=self.device) + (1-loss_rl)*out_layer.P/loss
-                W_new[mask is False] = 0.0
-                W_fb = delta*W_fb + (1-delta)*W_new
+                loss_rl = 1.0/(1.0 + torch.exp(- epsilon*loss_rl - (1-epsilon)*loss_tmp))
+                if step+1 % fb_update_steps == 0:
+                    W_new = (loss_rl*torch.randn(fb_size, device=self.device)*noise + (1-loss_rl)*out_layer.P) * mask
+                    W_fb = delta*W_fb + (1-delta)*W_new
+                    sr_1 = torch.max(torch.abs(torch.linalg.eigvals(W_fb)))
+                    W_fb *= sr_0/sr_1
 
                 # results storage
                 if step % sampling_steps == 0:
-                    if torch.isnan(out_layer.loss):
+                    if torch.isnan(loss_tmp):
                         print("ABORTING NETWORK TRAINING: Loss in output layer evaluated to a non-finite number.")
                         break
                     obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])

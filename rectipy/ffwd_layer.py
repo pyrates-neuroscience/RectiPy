@@ -66,7 +66,7 @@ class RLSLayer(Linear):
     _tensors = ["weights", "P"]
 
     def __init__(self, n_in: int, n_out: int, weights: Union[np.ndarray, torch.Tensor] = None,
-                 dtype: torch.dtype = torch.float64, beta: float = 1.0, alpha: float = 1.0, delta: float = 1e-3):
+                 dtype: torch.dtype = torch.float64, beta: float = 1.0, alpha: float = 1.0):
         """General form of the extended recursive least-squares algorithm as described in [1]_. Can be used to implement
         readout weight learning as in
 
@@ -85,8 +85,6 @@ class RLSLayer(Linear):
             observations over past observations.
         alpha
             Regularization parameter for the initial state of the state-error correlation matrix `P`.
-        delta
-            Rate with which weight updates are performed at each udpate step.
 
         References
         ----------
@@ -97,13 +95,10 @@ class RLSLayer(Linear):
         # check inputs for correctness
         if beta > 1 or beta < 0:
             raise ValueError("Parameter beta should be a positive scalar between 0 and 1.")
-        if delta < 0:
-            raise ValueError("Parameter delta should be a positive scalar.")
         if alpha < 0:
             raise ValueError("Parameter alpha should be a positive scalar.")
 
         # set RLS-specific attributes
-        self.delta = delta
         self.beta_inv = 1.0 / beta
         self.P = alpha * torch.eye(n_in, dtype=dtype)
         self.loss = 0.0
@@ -120,12 +115,12 @@ class RLSLayer(Linear):
         k = self.P @ x * self.beta_inv
         k /= 1.0 + x @ k
 
-        # update the weights
-        self.weights.add_(self.delta * torch.outer(err, k))
-
         # update the error correlation matrix
-        self.P.add_(-self.delta*(torch.outer(k, x @ self.P)))
+        self.P.add_(-torch.outer(k, x @ self.P))
         self.P.mul_(self.beta_inv)
+
+        # update the weights
+        self.weights.add_(torch.outer(err, self.P @ x))
 
         # update loss
         self.loss = torch.inner(err, err)

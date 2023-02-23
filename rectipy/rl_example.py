@@ -18,7 +18,7 @@ device = "cuda:0"
 node = "model_templates.base_templates.tanh_node"
 N = 600
 m = 2
-k = 0.8
+k = 0.5
 tau = np.random.uniform(10.0, 20.0, size=(N,))
 J0 = np.random.randn(N, N)
 J0 /= np.max(np.abs(np.linalg.eigvals(J0)))
@@ -33,7 +33,7 @@ net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.ta
 
 # add RLS learning layer and input layer
 net.add_input_layer(m)
-net.add_output_layer(1, train="rls", beta=0.99, delta=1.0, alpha=1.0)
+net.add_output_layer(1, train="rls", beta=0.99, alpha=1.0)
 net.compile()
 
 # online optimization parameters
@@ -49,7 +49,8 @@ tol = 1e-4
 # input parameters
 f1, f2 = 0.2, 0.02
 amp = 1.5
-W_fb = np.random.randn(N, 1)
+W_fb = np.random.randn(N, N)
+W_fb /= np.max(np.abs(np.linalg.eigvals(W_fb)))
 
 # define input
 time = np.linspace(0, steps*dt, num=steps)
@@ -65,8 +66,8 @@ target[:, 0] = inp[:, 0] * inp[:, 1] / amp
 # optimization
 ##############
 
-obs = net.train_rls(inp, targets=target, update_steps=100, verbose=True, record_output=True, record_loss=True,
-                    tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb)
+obs = net.train_rl(inp, targets=target, update_steps=100, verbose=True, record_output=True, record_loss=True,
+                   tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb)
 obs.plot("out")
 plt.show()
 
@@ -76,7 +77,7 @@ plt.show()
 print("Starting testing...")
 ds_test = 10
 obs2, loss = net.test(inp[:test_steps, :], target[:test_steps], record_output=True, record_loss=False,
-                      sampling_steps=ds_test, verbose=False, feedback_weights=W_fb)
+                      sampling_steps=ds_test, verbose=False, feedback_weights=obs["feedback_weights"])
 print("Finished.")
 
 # plotting
@@ -99,5 +100,10 @@ ax3.set_title('loss (training)')
 ax3.set_xlabel('training steps')
 ax3.set_ylabel('MSE')
 plt.tight_layout()
+
+fig2, axes2 = plt.subplots(nrows=2, figsize=(12, 8))
+for ax, mat, title in zip(axes2, [W_fb, obs2["feedback_weights"]], ["pre", "post"]):
+    ax.imshow(mat)
+    ax.set_title(title)
 
 plt.show()

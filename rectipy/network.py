@@ -534,6 +534,78 @@ class Network:
         print(f'Finished optimization after {t1 - t0} s.')
         return obs
 
+    def train_rl(self, inputs: np.ndarray, targets: np.ndarray,  feedback_weights: np.ndarray = None,
+                 epsilon: float = 0.99, delta: float = 0.9, update_steps: int = 1, sampling_steps: int = 100,
+                 verbose: bool = True, **kwargs) -> Observer:
+        r"""Reinforcement learning algorithm that implements slow adjustment of the feedback weights to the RNN layer
+        based on a running average of the residuals.
+
+        Parameters
+        ----------
+        inputs
+            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
+            input dimensions of the network.
+        targets
+            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
+            network.
+        feedback_weights
+            `m x k` array of synaptic weights. If provided, a feedback connections is established with these weights,
+            that projects the network output back to the RNN layer.
+        epsilon
+            Scalar in (0, 1] that controls how quickly the loss used for reinforcement learning can change.
+        delta
+            Scalar in (0, 1] that controls how quickly the feedback weights can change.
+        update_steps
+            Each `update_steps` an update of the trainable parameters will be performed.
+        sampling_steps
+            Number of training steps at which to record observables.
+        verbose
+            If true, the training progress will be displayed.
+        kwargs
+            Additional keyword arguments used for the optimization, loss calculation and observation.
+
+        Returns
+        -------
+        Observer
+            Instance of the `observer`.
+        """
+
+        # preparations
+        ##############
+
+        # test correct dimensionality of inputs
+        if inputs.shape[0] != targets.shape[0]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension.')
+
+        # transform inputs into tensors
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
+
+        # set up model
+        if self.output_layer is None:
+            self.add_output_layer(k=targets.shape[1], train="rls", **kwargs)
+        if self._model is None:
+            self.compile()
+
+        # initialize observer
+        obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
+        obs = Observer(dt=self.rnn_layer.dt, **obs_kwargs)
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+
+        # optimization
+        ##############
+
+        t0 = perf_counter()
+        if feedback_weights is None:
+            feedback_weights = np.random.randn(self.rnn_layer.n, self.rnn_layer.n)
+        W_fb = torch.tensor(feedback_weights, device=self.device)
+        obs = self._train_rl(inp_tensor, target_tensor, W_fb, epsilon, delta, obs, rec_vars, update_steps=update_steps,
+                             sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        t1 = perf_counter()
+        print(f'Finished optimization after {t1 - t0} s.')
+        return obs
+
     def test(self, inputs: np.ndarray, targets: np.ndarray, feedback_weights: np.ndarray = None, loss: str = 'mse',
              loss_kwargs: dict = None, sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
         """Test the model performance on a set of inputs and target outputs, with frozen model parameters.
@@ -889,6 +961,72 @@ class Network:
 
         # add output layer to model again
         self._model.append(out_layer)
+
+        return obs
+
+    def _train_rl(self, inp: torch.Tensor, targets: torch.Tensor, W_fb: torch.Tensor, epsilon: float, delta: float,
+                  obs: Observer, rec_vars: list, update_steps: int = 1, sampling_steps: int = 100,
+                  verbose: bool = False, tol: float = 1e-3, loss_beta: float = 0.9) -> Observer:
+
+        out_layer = self._model.pop(-1)
+        steps = inp.shape[0]
+
+        # extract properties of feedback weights
+        sr_0 = torch.max(torch.abs(torch.linalg.eigvals(W_fb)))
+        mask = torch.nonzero(W_fb)
+        fb_size = W_fb.shape
+
+        # get initial step done prior to the loop
+        x = self.forward(inp[0, :])
+        y_hat = out_layer.forward(x)
+        obs.record(0, y_hat, out_layer.loss, [self[v] for v in rec_vars])
+        loss = 1.0
+        loss_rl = loss
+        with torch.no_grad():
+            for step in range(steps):
+
+                if step % update_steps == 0:
+
+                    # perform output layer weight update
+                    x = self.forward(inp[step, :], W_fb @ x)
+                    y_hat = out_layer.forward(x)
+                    y = targets[step, :]
+                    out_layer.update(x, y_hat, y)
+
+                else:
+
+                    # perform forward pass
+                    x = self.forward(inp[step, :], W_fb @ x)
+                    y_hat = out_layer.forward(x)
+
+                # perform feedback weight update
+                loss_tmp = out_layer.loss
+                loss_rl = 1.0/(1.0 + torch.exp(epsilon*loss_rl + (1-epsilon)*loss_tmp))
+                W_new = loss_rl*torch.randn(fb_size, device=self.device) + (1-loss_rl)*out_layer.P/loss
+                W_new[mask is False] = 0.0
+                W_fb = delta*W_fb + (1-delta)*W_new
+
+                # results storage
+                if step % sampling_steps == 0:
+                    if torch.isnan(out_layer.loss):
+                        print("ABORTING NETWORK TRAINING: Loss in output layer evaluated to a non-finite number.")
+                        break
+                    obs.record(step, y_hat, loss_tmp, [self[v] for v in rec_vars])
+                    loss = loss_beta * loss + (1.0 - loss_beta) * loss_tmp
+                    if verbose:
+                        print(f'Progress: {step}/{steps} training steps finished.')
+                        print(f'Current loss: {loss}.')
+                        print('')
+
+                # break condition
+                if loss < tol:
+                    break
+
+        # add output layer to model again
+        self._model.append(out_layer)
+
+        # add feedback matrix to observer
+        obs.save("feedback_weights", W_fb)
 
         return obs
 

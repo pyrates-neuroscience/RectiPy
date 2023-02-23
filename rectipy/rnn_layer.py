@@ -25,6 +25,7 @@ class RNNLayer(Module):
         self._param_map = param_map
         self._start = torch.tensor(self._var_map["out"][0], dtype=torch.int64, device=device)
         self._stop = torch.tensor(self._var_map["out"][-1], dtype=torch.int64, device=device)
+        self.n = int((self._stop - self._start).detach().cpu().numpy())
         self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
         self._inp_ext = self._param_map["in"]
         self.device = device

@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from typing import Iterable, Union
+from typing import Iterable, Union, Any
 from pandas import DataFrame
 from .utility import retrieve_from_dict
 
@@ -39,9 +39,13 @@ class Observer:
         if record_output:
             self._recordings['out'] = []
         self._recordings["steps"] = []
+        self._additional_storage = {}
 
     def __getitem__(self, item: str):
-        return DataFrame(index=self._recordings["steps"], data=self._recordings[item])
+        try:
+            return DataFrame(index=self._recordings["steps"], data=self._recordings[item])
+        except KeyError:
+            return self._additional_storage[item]
 
     @property
     def recorded_rnn_variables(self) -> list:
@@ -91,6 +95,18 @@ class Observer:
             except AttributeError:
                 pass
             recs['loss'].append(loss)
+
+    def save(self, key: str, val: Any):
+        """Saves object on observer. Can be retrieved via `key`.
+
+        Parameters
+        ----------
+        key
+            Used for storage/retrieval.
+        val
+            Object to be stored.
+        """
+        self._additional_storage[key] = val
 
     def plot(self, y: str, x: str = None, ax: plt.Axes = None, **kwargs) -> plt.Axes:
         """Create a line plot with variable `y` on the y-axis and `x` on the x-axis.
@@ -147,7 +163,9 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        sig = np.asarray(self._recordings[v])
+        sig = self[v]
+        if type(sig) is not np.ndarray:
+            sig = np.asarray(sig)
 
         shrink = kwargs.pop("shrink", 0.6)
         im = ax.imshow(sig.T, **kwargs)

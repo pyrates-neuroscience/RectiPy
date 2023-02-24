@@ -296,7 +296,9 @@ class Network:
 
         # initialize output layer
         kwargs.update({"n_in": self.n, "n_out": k, "weights": weights, "dtype": dtype})
-        if train is None:
+        if k == self.n and weights is None:
+            output_layer = None
+        elif train is None:
             output_layer = Linear(**kwargs, detach=True)
         elif train == "gd":
             output_layer = Linear(**kwargs, detach=False)
@@ -309,6 +311,11 @@ class Network:
         # add activation function to output layer
         if activation_function:
             output_layer = LayerStack(output_layer, activation_function)
+        elif output_layer is None:
+            raise ValueError("If no weights are provided and `k` is equal to the number of neurons in the recurrent "
+                             "layer, it is assumed that the output layer is supposed to be a mere activation function "
+                             "on top of the recurrent layer state outputs (without any additional weights). Please "
+                             "provide a value for `activation_function` in that case.")
 
         # add layer to model
         self.output_layer = output_layer.to(self.device)
@@ -600,8 +607,13 @@ class Network:
         if feedback_weights is None:
             feedback_weights = np.random.randn(self.rnn_layer.n, self.rnn_layer.n)
         W_fb = torch.tensor(feedback_weights, device=self.device)
-        obs = self._train_rl(inp_tensor, target_tensor, W_fb, epsilon, delta, obs, rec_vars, update_steps=update_steps,
-                             sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        if hasattr(self._model[-1], "loss"):
+            obs = self._train_rl_rls(inp_tensor, target_tensor, W_fb, epsilon, delta, obs, rec_vars,
+                                     update_steps=update_steps, sampling_steps=sampling_steps, verbose=verbose,
+                                     **kwargs)
+        else:
+            obs = self._train_rl(inp_tensor, target_tensor, W_fb, epsilon, delta, obs, rec_vars, update_steps=update_steps,
+                                 sampling_steps=sampling_steps, verbose=verbose, **kwargs)
         t1 = perf_counter()
         print(f'Finished optimization after {t1 - t0} s.')
         return obs
@@ -964,10 +976,10 @@ class Network:
 
         return obs
 
-    def _train_rl(self, inp: torch.Tensor, targets: torch.Tensor, W_fb: torch.Tensor, epsilon: float, delta: float,
-                  obs: Observer, rec_vars: list, update_steps: int = 1, sampling_steps: int = 100,
-                  fb_update_steps: int = 100, verbose: bool = False, tol: float = 1e-3, loss_beta: float = 0.9,
-                  noise: float = 1e-2) -> Observer:
+    def _train_rl_rls(self, inp: torch.Tensor, targets: torch.Tensor, W_fb: torch.Tensor, epsilon: float, delta: float,
+                      obs: Observer, rec_vars: list, update_steps: int = 1, sampling_steps: int = 100,
+                      fb_update_steps: int = 100, verbose: bool = False, tol: float = 1e-3, loss_beta: float = 0.9,
+                      noise: float = 1e-2) -> Observer:
 
         out_layer = self._model.pop(-1)
         steps = inp.shape[0]

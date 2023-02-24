@@ -66,7 +66,7 @@ class RLSLayer(Linear):
     _tensors = ["weights", "P"]
 
     def __init__(self, n_in: int, n_out: int, weights: Union[np.ndarray, torch.Tensor] = None,
-                 dtype: torch.dtype = torch.float64, beta: float = 1.0, alpha: float = 1.0):
+                 dtype: torch.dtype = torch.float64, beta: float = 1.0, alpha: float = 1.0, delta: float = 1.0):
         """General form of the extended recursive least-squares algorithm as described in [1]_. Can be used to implement
         readout weight learning as in
 
@@ -85,6 +85,8 @@ class RLSLayer(Linear):
             observations over past observations.
         alpha
             Regularization parameter for the initial state of the state-error correlation matrix `P`.
+        delta
+            Additional scalar > 0 for weighting the updates of the weight matrix and the covariance matrix of
 
         References
         ----------
@@ -99,25 +101,25 @@ class RLSLayer(Linear):
             raise ValueError("Parameter alpha should be a positive scalar.")
 
         # set RLS-specific attributes
-        self.beta_inv = 1.0 / beta
+        self.beta = beta
         self.P = alpha * torch.eye(n_in, dtype=dtype)
         self.loss = 0.0
 
         # call super method
         super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=True)
 
-    def update(self, x: torch.Tensor, y_hat: torch.Tensor, y: torch.Tensor = None) -> None:
+    def update(self, x: torch.Tensor, y_hat: torch.Tensor, y: torch.Tensor) -> None:
 
         # calculate current error
         err = y - y_hat
 
         # calculate gain
-        k = self.P @ x * self.beta_inv
-        k /= 1.0 + x @ k
+        k = self.P @ x
+        k /= self.beta + x @ k
 
         # update the error correlation matrix
         self.P.add_(-torch.outer(k, x @ self.P))
-        self.P.mul_(self.beta_inv)
+        self.P /= self.beta
 
         # update the weights
         self.weights.add_(torch.outer(err, self.P @ x))
@@ -128,7 +130,7 @@ class RLSLayer(Linear):
 
 class LayerStack(Sequential):
 
-    def __init__(self, layer: Linear, activation_function: str = None):
+    def __init__(self, layer: Linear = None, activation_function: str = None):
 
         # define output function
         if activation_function is None:
@@ -146,7 +148,10 @@ class LayerStack(Sequential):
                              f"option. See the docstring for `Network.add_output_layer` for valid options.")
 
         # call super class
-        super().__init__(layer, activation_function)
+        if layer is None:
+            super().__init__(activation_function)
+        else:
+            super().__init__(layer, activation_function)
 
     def to(self, device: str, **kwargs):
         super().to(device=torch.device(device), **kwargs)

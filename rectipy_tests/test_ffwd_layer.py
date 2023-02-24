@@ -143,7 +143,7 @@ def test_1_2_rls_layer():
 
     # initialization
     with pytest.raises(ValueError):
-        RLSLayer(n, m, delta=-0.5)
+        RLSLayer(n, m, alpha=-0.5)
         RLSLayer(n, m, beta=1.5)
         RLSLayer(n+1, m, weights=w1)
 

@@ -33,7 +33,7 @@ net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.ta
 
 # add RLS learning layer and input layer
 net.add_input_layer(m)
-net.add_output_layer(1, train="rls", beta=0.99, alpha=1.0)
+net.add_ffwd_layer(1, train="rls", beta=0.99, alpha=1.0)
 net.compile()
 
 # online optimization parameters
@@ -66,9 +66,9 @@ target[:, 0] = inp[:, 0] * inp[:, 1] / amp
 # optimization
 ##############
 
-obs = net.train_rl(inp, targets=target, update_steps=10, verbose=True, record_output=True, record_loss=True,
-                   tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb, epsilon=0.999,
-                   delta=0.99, fb_update_steps=1000000, noise=0.01)
+obs = net.fit_rl(inp, targets=target, update_steps=10, verbose=True, record_output=True, record_loss=True,
+                 tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb, epsilon=0.999,
+                 delta=0.99, fb_update_steps=1000000, noise=0.01)
 obs.plot("out")
 plt.show()
 

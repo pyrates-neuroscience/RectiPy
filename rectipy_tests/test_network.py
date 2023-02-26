@@ -184,11 +184,11 @@ def test_3_3_output_layer():
                              target_var=t_var, clear=True, verbose=False, file_name="net5", dtype=torch.float32)
 
     # add output layers
-    net1.add_output_layer(k, weights=out_weights)
-    net2.add_output_layer(k, weights=out_weights, activation_function='sigmoid')
-    net3.add_output_layer(k, train='gd', activation_function='sigmoid')
-    net4.add_output_layer(k, train='rls')
-    net5.add_output_layer(k, dtype=torch.float32)
+    net1.add_ffwd_layer(k, weights=out_weights)
+    net2.add_ffwd_layer(k, weights=out_weights, activation_function='sigmoid')
+    net3.add_ffwd_layer(k, train='gd', activation_function='sigmoid')
+    net4.add_ffwd_layer(k, train='rls')
+    net5.add_ffwd_layer(k, dtype=torch.float32)
     net1.compile()
     net2.compile()
     net5.compile()
@@ -247,7 +247,7 @@ def test_3_4_compile():
     net.compile()
     assert len(net) == 2
     y1 = net.forward(x)
-    net.add_output_layer(k, dtype=torch.float64)
+    net.add_ffwd_layer(k, dtype=torch.float64)
     net.compile()
     y2 = net.forward(x)
     assert len(net) == 3
@@ -297,8 +297,8 @@ def test_3_5_parameters():
     assert len(list(net2.parameters())) == 2
 
     # add output layers
-    net1.add_output_layer(k, train="gd")
-    net2.add_output_layer(k, train="rls")
+    net1.add_ffwd_layer(k, train="gd")
+    net2.add_ffwd_layer(k, train="rls")
     net1.compile()
     net2.compile()
 

@@ -24,6 +24,10 @@ class Linear(Module):
         elif weights.shape[0] != n_out or weights.shape[1] != n_in:
             raise ValueError("Shape of the provided weights does not match the input and output dimensions of the"
                              "layer.")
+
+        # set public attributes
+        self.n_in = n_in
+        self.n_out = n_out
         self.weights = weights
 
         # handle tensor gradient requirements
@@ -131,6 +135,8 @@ class RLSLayer(Linear):
 class LayerStack(Sequential):
 
     def __init__(self, layer: Linear = None, activation_function: str = None):
+
+        # TODO: remove this and move it to the network instead?
 
         # define output function
         if activation_function is None:

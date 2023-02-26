@@ -85,7 +85,7 @@ for j in range(train_epochs):
     coeffs.append(coeffs_tmp)
 
 # add output layers
-net.add_output_layer(k, train=False, weights=np.mean(coeffs, axis=0))
+net.add_ffwd_layer(k, train=False, weights=np.mean(coeffs, axis=0))
 net.compile()
 
 # test performance on last epoch

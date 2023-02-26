@@ -16,19 +16,24 @@ class RNNLayer(Module):
                  dtype: torch.dtype = torch.float64, train_params: list = None, device: str = "cpu", **kwargs):
 
         super().__init__()
-        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad,
-                              device=device)
-        self.dt = dt
-        self.func = rnn_func
+
+        # private attributes
         self._args = [to_device(arg, device) for arg in rnn_args[1:]]
         self._var_map = var_map
         self._param_map = param_map
         self._start = torch.tensor(self._var_map["out"][0], dtype=torch.int64, device=device)
         self._stop = torch.tensor(self._var_map["out"][-1], dtype=torch.int64, device=device)
-        self.n = int((self._stop - self._start).detach().cpu().numpy())
-        self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
         self._inp_ext = self._param_map["in"]
+
+        # public attributes
+        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad,
+                              device=device)
+        self.dt = dt
+        self.func = rnn_func
         self.device = device
+        self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
+        self.n_out = int((self._stop - self._start).detach().cpu().numpy())
+        self.n_in = int(self._args[self._inp_ext].shape[0])
 
     def __getitem__(self, item):
         try:
@@ -51,8 +56,8 @@ class RNNLayer(Module):
         return list(self._var_map.keys())
 
     @classmethod
-    def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
-                  input_var: str, output_var: str, train_params: list = None, **kwargs):
+    def from_yaml(cls, node: Union[str, NodeTemplate], input_var: str, output_var: str, weights: np.ndarray = None,
+                  source_var: str = None, target_var: str = None, train_params: list = None, **kwargs):
 
         # extract keyword arguments for initialization
         dt = kwargs.pop('dt', 1e-3)
@@ -68,7 +73,8 @@ class RNNLayer(Module):
         # generate rnn template and function
         try:
             func, args, keys, template, var_map = \
-                cls._circuit_from_yaml(node, weights, source_var, target_var, step_size=dt, **kwargs)
+                cls._circuit_from_yaml(node, dt, weights=weights, source_var=source_var, target_var=target_var,
+                                       **kwargs)
         except Exception as e:
             clear_frontend_caches()
             raise e
@@ -100,7 +106,7 @@ class RNNLayer(Module):
 
         # generate rnn template and function
         try:
-            func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False,
+            func, args, keys, state_var_indices = template.get_run_func('rnn_layer', dt, backend='torch', clear=False,
                                                                         inplace_vectorfield=False, **kwargs)
         except Exception as e:
             clear_frontend_caches()
@@ -144,8 +150,8 @@ class RNNLayer(Module):
             self.y = to_device(y_new, self.device)
 
     @classmethod
-    def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
-                           **kwargs) -> tuple:
+    def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], dt: float, weights: np.ndarray = None, source_var: str = None,
+                           target_var: str = None, **kwargs) -> tuple:
 
         # initialize base node template
         if type(node) is str:
@@ -157,16 +163,20 @@ class RNNLayer(Module):
         template = CircuitTemplate(name='reservoir', nodes=nodes)
 
         # add edges to network
-        edge_attr = kwargs.pop("edge_attr", None)
-        template.add_edges_from_matrix(source_var, target_var, nodes=list(nodes.keys()), weight=weights,
-                                       edge_attr=edge_attr)
+        if weights is not None:
+            if source_var is None or target_var is None:
+                raise ValueError("If synaptic weights are passed (`weights`), please provide the names of the source "
+                                 "and target variable that should be connected via `weights`.")
+            edge_attr = kwargs.pop("edge_attr", None)
+            template.add_edges_from_matrix(source_var, target_var, nodes=list(nodes.keys()), weight=weights,
+                                           edge_attr=edge_attr)
 
         # add variable updates
         if 'node_vars' in kwargs:
             template.update_var(node_vars=kwargs.pop('node_vars'))
 
         # generate rnn function
-        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', backend='torch', clear=False,
+        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', dt, backend='torch', clear=False,
                                                                     inplace_vectorfield=False, **kwargs)
 
         return func, args[1:], keys[1:], template, state_var_indices
@@ -214,15 +224,15 @@ class SRNNLayer(RNNLayer):
         self._spike_stop = torch.tensor(self._var_map['spike_def'][-1], dtype=torch.int64, device=self.device)
 
     @classmethod
-    def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
-                  input_var: str, output_var: str, spike_var: str = 'spike', spike_def: str = 'v',
+    def from_yaml(cls, node: Union[str, NodeTemplate], input_var: str, output_var: str, weights: np.ndarray = None,
+                  source_var: str = None, target_var: str = None, spike_var: str = 'spike', spike_def: str = 'v',
                   train_params: list = None, **kwargs):
 
         # extract keyword arguments for initialization
         kwargs["param_mapping"] = {"spike_var": spike_var}
         kwargs["var_mapping"] = {"spike_def": spike_def}
 
-        return super().from_yaml(node, weights, source_var, target_var, input_var, output_var,
+        return super().from_yaml(node, input_var, output_var, weights, source_var, target_var,
                                  train_params=train_params, **kwargs)
 
     @classmethod

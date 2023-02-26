@@ -30,7 +30,7 @@ net.add_input_layer(m, train=False)
 
 # perform simulation
 obs = net.run(inp, record_output=False, record_vars=[('s', True)], sampling_steps=100)
-net.train_gd()
+net.fit_gd()
 
 # plot results
 obs.plot('s')

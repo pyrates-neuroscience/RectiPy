@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.rnn_layer import RNNLayer, SRNNLayer
+from rectipy.nodes import NN, SNN
 import torch
 import pytest
 import numpy as np
@@ -50,23 +50,23 @@ def test_2_1_rnn_init():
     args = (torch.zeros((n,)), torch.zeros((n,)), torch.tensor(weights), 1.0)
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
-                              source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, verbose=False)
-    rnn3 = SRNNLayer.from_yaml("neuron_model_templates.spiking_neurons.qif.qif", weights=weights,
-                               source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
-                               output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
-                               spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
-    rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
-                              source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, train_params=["weights"], verbose=False)
+    rnn1 = NN(func, args, {"out": [0, n]}, {"in": 0})
+    rnn2 = NN.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
+                        source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
+                        output_var="tanh_op/r", clear=True, verbose=False)
+    rnn3 = SNN.from_yaml("neuron_model_templates.spiking_neurons.qif.qif", weights=weights,
+                         source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
+                         output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
+                         spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
+    rnn4 = NN.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
+                        source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
+                        output_var="tanh_op/r", clear=True, train_params=["weights"], verbose=False)
     # TODO: add tests for RNNLayer.from_template method
 
     # these tests should pass
-    assert isinstance(rnn1, RNNLayer)
-    assert isinstance(rnn2, RNNLayer)
-    assert isinstance(rnn3, SRNNLayer)
+    assert isinstance(rnn1, NN)
+    assert isinstance(rnn2, NN)
+    assert isinstance(rnn3, SNN)
     assert len(rnn2.y) == n
     assert len(rnn3.y) == 2*n
     assert len(list(rnn4.parameters())) - len(list(rnn2.parameters())) == 1
@@ -92,8 +92,8 @@ def test_2_2_detach():
     args2 = tuple([a.clone() if type(a) is torch.Tensor else a for a in args])
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
-    rnn2 = RNNLayer(func, args2,{"out": [0, n]}, {"in": 0})
+    rnn1 = NN(func, args, {"out": [0, n]}, {"in": 0})
+    rnn2 = NN(func, args2, {"out": [0, n]}, {"in": 0})
     rnn2.detach()
 
     # these tests should pass
@@ -121,13 +121,13 @@ def test_2_3_forward():
     inp = torch.randn(n, dtype=dtype)
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
-                              source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, verbose=False)
-    rnn3 = RNNLayer(func, args + (1.0, ), {"out": [0, n]}, {"in": 0})
-    rnn4 = RNNLayer(func, args, {"out": [0, n]}, {"in": 2})
-    rnn5 = RNNLayer(func, args, {"out": [0, 3]}, {"in": 0})
+    rnn1 = NN(func, args, {"out": [0, n]}, {"in": 0})
+    rnn2 = NN.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
+                        source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
+                        output_var="tanh_op/r", clear=True, verbose=False)
+    rnn3 = NN(func, args + (1.0,), {"out": [0, n]}, {"in": 0})
+    rnn4 = NN(func, args, {"out": [0, n]}, {"in": 2})
+    rnn5 = NN(func, args, {"out": [0, 3]}, {"in": 0})
 
     # detach the rnns
     for rnn in [rnn1, rnn2, rnn3, rnn4, rnn5]:
@@ -168,7 +168,7 @@ def test_2_4_reset():
     x = torch.randn(n)
 
     # create instance of RNNLayer
-    rnn = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
+    rnn = NN(func, args, {"out": [0, n]}, {"in": 0})
 
     # collect states
     r1 = rnn.forward(x)

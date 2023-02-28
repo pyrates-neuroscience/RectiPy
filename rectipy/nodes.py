@@ -4,13 +4,38 @@ Contains the network classes, which are the main interfaces for the user to inte
 
 from pyrates import NodeTemplate, CircuitTemplate, clear, clear_frontend_caches
 import torch
-from torch.nn import Module
+from torch.nn import Module, Tanh, Softmax, Softmin, Sigmoid, Identity
 from typing import Callable, Union, Iterator
 import numpy as np
 from .utility import to_device
 
 
-class RNNLayer(Module):
+class Function:
+
+    def __new__(cls, activation_function: str, **kwargs):
+
+        if activation_function == 'tanh':
+            activation_function = Tanh
+        elif activation_function == 'softmax':
+            activation_function = Softmax
+            if "dim" not in kwargs:
+                kwargs["dim"] = 0
+        elif activation_function == 'softmin':
+            activation_function = Softmin
+            if "dim" not in kwargs:
+                kwargs["dim"] = 0
+        elif activation_function == 'sigmoid':
+            activation_function = Sigmoid
+        elif activation_function == "identity":
+            activation_function = Identity
+        else:
+            raise ValueError(f"Invalid keyword argument `activation_function`: {activation_function} is not a valid "
+                             f"option. See the docstring for `Network.add_ffwd_layer` for valid options.")
+
+        return activation_function(**kwargs)
+
+
+class NN(Module):
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict, dt: float = 1e-3,
                  dtype: torch.dtype = torch.float64, train_params: list = None, device: str = "cpu", **kwargs):
@@ -130,7 +155,7 @@ class RNNLayer(Module):
         y_old = self.y.detach()
         dy = self.func(0, y_old, *self._args)
         self.y = y_old + self.dt * dy
-        return self.y[self._start:self._stop]
+        return y_old[self._start:self._stop]
 
     def parameters(self, recurse: bool = True) -> Iterator:
         for p in self.train_params:
@@ -209,7 +234,7 @@ class RNNLayer(Module):
         return param_mapping
 
 
-class SRNNLayer(RNNLayer):
+class SNN(NN):
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
                  spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
@@ -252,7 +277,7 @@ class SRNNLayer(RNNLayer):
         dy = self.func(0, y_old, *self._args)
         self.y = y_old + self.dt * dy
         self.spike_reset(spikes)
-        return self.y[self._start:self._stop]
+        return y_old[self._start:self._stop]
 
     def spike_reset(self, spikes: torch.Tensor):
         self.y[self._spike_start:self._spike_stop][spikes] = self._reset

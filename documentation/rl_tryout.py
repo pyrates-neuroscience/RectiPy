@@ -1,5 +1,5 @@
 from rectipy import Network
-from rectipy.ffwd_layer import RLSLayer
+from rectipy.edges import RLS
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -34,7 +34,7 @@ net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.ta
                         node_vars={"all/li_op/k": k, "all/li_op/tau": tau, 'all/li_op/v': np.random.randn(N)},
                         )
 net.add_input_layer(m)
-readout = RLSLayer(N, 1, beta=0.99, alpha=1.0, delta=1.0)
+readout = RLS(N, 1, beta=0.99, alpha=1.0, delta=1.0)
 readout.to(device)
 net.compile()
 

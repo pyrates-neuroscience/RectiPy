@@ -154,7 +154,7 @@ net.add_input_layer(m, weights=np.random.randn(m, N))
 # It is also possible to add output layers to the network using a similar syntax:
 
 k = 2
-net.add_ffwd_layer(k, weights=np.random.randn(N, k), activation_function="sigmoid")
+net.add_edge(k, weights=np.random.randn(N, k), activation_function="sigmoid")
 
 # %%
 # The keyword argument :code:`activation_function` is the only argument that differs from the input layer initialization.

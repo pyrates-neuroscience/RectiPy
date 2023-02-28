@@ -33,7 +33,7 @@ net = Network.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.ta
 
 # add RLS learning layer and input layer
 net.add_input_layer(m)
-net.add_ffwd_layer(1, train="rls", beta=0.99, delta=1.0, alpha=1.0)
+net.add_edge(1, train="rls", beta=0.99, delta=1.0, alpha=1.0)
 net.compile()
 
 # online optimization parameters

@@ -1,5 +1,5 @@
 import torch
-from torch.nn import Module, Sequential, Tanh, Softmax, Softmin, Sigmoid, Identity
+from torch.nn import Module
 from typing import Iterator, Union
 import numpy as np
 from .utility import to_device
@@ -65,7 +65,7 @@ class Linear(Module):
             val.detach()
 
 
-class RLSLayer(Linear):
+class RLS(Linear):
 
     _tensors = ["weights", "P"]
 
@@ -130,42 +130,3 @@ class RLSLayer(Linear):
 
         # update loss
         self.loss = torch.inner(err, err)
-
-
-class LayerStack(Sequential):
-
-    def __init__(self, layer: Linear = None, activation_function: str = None):
-
-        # TODO: remove this and move it to the network instead?
-
-        # define output function
-        if activation_function is None:
-            activation_function = Identity()
-        elif activation_function == 'tanh':
-            activation_function = Tanh()
-        elif activation_function == 'softmax':
-            activation_function = Softmax(dim=0)
-        elif activation_function == 'softmin':
-            activation_function = Softmin(dim=0)
-        elif activation_function == 'sigmoid':
-            activation_function = Sigmoid()
-        else:
-            raise ValueError(f"Invalid keyword argument `activation_function`: {activation_function} is not a valid "
-                             f"option. See the docstring for `Network.add_output_layer` for valid options.")
-
-        # call super class
-        if layer is None:
-            super().__init__(activation_function)
-        else:
-            super().__init__(layer, activation_function)
-
-    def to(self, device: str, **kwargs):
-        super().to(device=torch.device(device), **kwargs)
-        for layer in self:
-            layer.to(device)
-        return self
-
-    def parameters(self, recurse: bool = True) -> Iterator:
-        for layer in self:
-            for p in layer.parameters(recurse):
-                yield p

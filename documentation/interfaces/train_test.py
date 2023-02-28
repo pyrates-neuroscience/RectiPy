@@ -78,7 +78,7 @@ k = 3
 activation_function = "softmax"
 
 # add readout layer
-net.add_ffwd_layer(k, train=True, activation_function=activation_function)
+net.add_edge(k, train=True, activation_function=activation_function)
 
 # %%
 # By declaring this layer as trainable, the weights of this layer are going to be optimized during training.

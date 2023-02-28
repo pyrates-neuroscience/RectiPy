@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.ffwd_layer import Linear, RLSLayer, LayerStack
+from rectipy.edges import Linear, RLS, ActivationFunc
 from torch.nn import Linear as TorchLinear
 import pytest
 import numpy as np
@@ -108,16 +108,16 @@ def test_1_2_rls_layer():
     y = torch.randn(m, dtype=dtype)
 
     # create different instances of the input layer
-    rls1 = RLSLayer(n, m)
-    rls2 = RLSLayer(n, m, weights=w1)
-    rls3 = RLSLayer(n, m, weights=w1, beta=0.5)
-    rls4 = RLSLayer(n, m, weights=w1, alpha=0.5)
+    rls1 = RLS(n, m)
+    rls2 = RLS(n, m, weights=w1)
+    rls3 = RLS(n, m, weights=w1, beta=0.5)
+    rls4 = RLS(n, m, weights=w1, alpha=0.5)
 
     # these tests should pass
     #########################
 
     # test correct initialization
-    assert isinstance(rls1, RLSLayer)
+    assert isinstance(rls1, RLS)
     assert torch.sum(rls2.weights - w1.T).numpy() == pytest.approx(0.0, rel=accuracy, abs=accuracy)
     assert rls1.P.shape[0] == n
     assert len(list(rls2.parameters())) == 0
@@ -143,9 +143,9 @@ def test_1_2_rls_layer():
 
     # initialization
     with pytest.raises(ValueError):
-        RLSLayer(n, m, alpha=-0.5)
-        RLSLayer(n, m, beta=1.5)
-        RLSLayer(n+1, m, weights=w1)
+        RLS(n, m, alpha=-0.5)
+        RLS(n, m, beta=1.5)
+        RLS(n + 1, m, weights=w1)
 
     # forwarding
     with pytest.raises(RuntimeError):
@@ -165,9 +165,9 @@ def test_1_3_layerstack():
     x = torch.randn(n, dtype=torch.float64)
 
     # create different output layer instances
-    out1 = LayerStack(Linear(n, m))
-    out2 = LayerStack(Linear(n, m, weights=weights), activation_function='tanh')
-    out3 = LayerStack(Linear(n, m+1, dtype=torch.float32), activation_function="softmax")
+    out1 = ActivationFunc(Linear(n, m))
+    out2 = ActivationFunc(Linear(n, m, weights=weights), activation_function='tanh')
+    out3 = ActivationFunc(Linear(n, m + 1, dtype=torch.float32), activation_function="softmax")
 
     # these tests should pass
     assert isinstance(out1, torch.nn.Sequential)
@@ -184,4 +184,4 @@ def test_1_3_layerstack():
         out3.forward(x)
         out2.forward(x) - out3.forward(x)
     with pytest.raises(ValueError):
-        LayerStack(Linear(n, m), activation_function='invalid')
+        ActivationFunc(Linear(n, m), activation_function='invalid')

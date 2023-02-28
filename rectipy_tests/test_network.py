@@ -2,8 +2,8 @@
 """
 
 # imports
-from rectipy.rnn_layer import RNNLayer, SRNNLayer
-from rectipy.ffwd_layer import Linear, RLSLayer
+from rectipy.nodes import NN, SNN
+from rectipy.edges import Linear, RLS
 from rectipy import Network
 import torch
 import pytest
@@ -52,8 +52,8 @@ def test_3_1_init():
     t_var = "li_op/r_in"
 
     # rnn layer initialization
-    rnn = RNNLayer.from_yaml(node, weights=weights, source_var=s_var, target_var=t_var, input_var=in_var,
-                             output_var=out_var, clear=True, verbose=False)
+    rnn = NN.from_yaml(node, weights=weights, source_var=s_var, target_var=t_var, input_var=in_var,
+                       output_var=out_var, clear=True, verbose=False)
 
     # different network initializations
     net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
@@ -69,9 +69,9 @@ def test_3_1_init():
     # TODO: add tests for Network.from_template method
 
     # these tests should pass
-    assert isinstance(net1.rnn_layer, RNNLayer)
-    assert isinstance(net5.rnn_layer, SRNNLayer)
-    assert isinstance(net1[0], RNNLayer)
+    assert isinstance(net1.rnn_layer, NN)
+    assert isinstance(net5.rnn_layer, SNN)
+    assert isinstance(net1[0], NN)
     assert net2.rnn_layer == rnn
     assert len(net3._var_map) - len(net1._var_map) == 2
     assert len(net1.rnn_layer.train_params) == 0
@@ -82,16 +82,16 @@ def test_3_1_init():
 
     # these tests should fail
     with pytest.raises(FileNotFoundError):
-        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.freaky_integrator.tanh", weights=weights,
-                           source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
-                           verbose=False)
+        NN.from_yaml("neuron_model_templates.rate_neurons.freaky_integrator.tanh", weights=weights,
+                     source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
+                     verbose=False)
     with pytest.raises(AttributeError):
-        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tan", weights=weights,
-                           source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
-                           verbose=False)
+        NN.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tan", weights=weights,
+                     source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
+                     verbose=False)
     with pytest.raises(KeyError):
-        RNNLayer.from_yaml(node, weights=weights, source_var="x", target_var=t_var, input_var=in_var,
-                           output_var=out_var, clear=True, verbose=False)
+        NN.from_yaml(node, weights=weights, source_var="x", target_var=t_var, input_var=in_var,
+                     output_var=out_var, clear=True, verbose=False)
 
 
 def test_3_2_input_layer():
@@ -140,7 +140,7 @@ def test_3_2_input_layer():
     assert tuple(net1.forward(x).shape) == (n,)
     net1.remove_input_layer()
     net1.compile()
-    assert isinstance(net1[0], RNNLayer)
+    assert isinstance(net1[0], NN)
 
     # these tests should fail
     with pytest.raises(RuntimeError):
@@ -184,11 +184,11 @@ def test_3_3_output_layer():
                              target_var=t_var, clear=True, verbose=False, file_name="net5", dtype=torch.float32)
 
     # add output layers
-    net1.add_ffwd_layer(k, weights=out_weights)
-    net2.add_ffwd_layer(k, weights=out_weights, activation_function='sigmoid')
-    net3.add_ffwd_layer(k, train='gd', activation_function='sigmoid')
-    net4.add_ffwd_layer(k, train='rls')
-    net5.add_ffwd_layer(k, dtype=torch.float32)
+    net1.add_edge(k, weights=out_weights)
+    net2.add_edge(k, weights=out_weights, activation_function='sigmoid')
+    net3.add_edge(k, train='gd', activation_function='sigmoid')
+    net4.add_edge(k, train='rls')
+    net5.add_edge(k, dtype=torch.float32)
     net1.compile()
     net2.compile()
     net5.compile()
@@ -197,7 +197,7 @@ def test_3_3_output_layer():
     assert isinstance(net1.output_layer, Linear)
     assert isinstance(net2.output_layer, torch.nn.Sequential)
     assert isinstance(net3.output_layer, torch.nn.Sequential)
-    assert isinstance(net4.output_layer, RLSLayer)
+    assert isinstance(net4.output_layer, RLS)
     assert isinstance(net2.output_layer[0], Linear)
     assert isinstance(net2.output_layer[1], torch.nn.Sigmoid)
     assert len(list(net1.parameters())) == 0
@@ -247,7 +247,7 @@ def test_3_4_compile():
     net.compile()
     assert len(net) == 2
     y1 = net.forward(x)
-    net.add_ffwd_layer(k, dtype=torch.float64)
+    net.add_edge(k, dtype=torch.float64)
     net.compile()
     y2 = net.forward(x)
     assert len(net) == 3
@@ -297,8 +297,8 @@ def test_3_5_parameters():
     assert len(list(net2.parameters())) == 2
 
     # add output layers
-    net1.add_ffwd_layer(k, train="gd")
-    net2.add_ffwd_layer(k, train="rls")
+    net1.add_edge(k, train="gd")
+    net2.add_edge(k, train="rls")
     net1.compile()
     net2.compile()
 

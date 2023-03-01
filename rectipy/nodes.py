@@ -12,7 +12,7 @@ from .utility import to_device
 
 class Function:
 
-    def __new__(cls, activation_function: str, **kwargs):
+    def __init__(self, n: int, activation_function: str, **kwargs):
 
         if activation_function == 'tanh':
             activation_function = Tanh
@@ -32,7 +32,15 @@ class Function:
             raise ValueError(f"Invalid keyword argument `activation_function`: {activation_function} is not a valid "
                              f"option. See the docstring for `Network.add_ffwd_layer` for valid options.")
 
-        return activation_function(**kwargs)
+        self.n_in = n
+        self.n_out = n
+        self.func = activation_function(**kwargs)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.func.forward(x)
+
+    def parameters(self, **kwargs):
+        return self.func.parameters(**kwargs)
 
 
 class NN(Module):

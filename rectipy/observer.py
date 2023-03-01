@@ -29,8 +29,8 @@ class Observer:
         if not record_vars:
             record_vars = []
         self._dt = dt
-        self._state_vars = [v[0] for v in record_vars]
-        self._reduce_vars = [v[1] for v in record_vars]
+        self._state_vars = [v[:2] for v in record_vars]
+        self._reduce_vars = [v[2] for v in record_vars]
         self._recordings = {v: [] for v in self._state_vars}
         self._record_loss = record_loss
         self._record_out = record_output

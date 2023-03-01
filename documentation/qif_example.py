@@ -12,26 +12,31 @@ etas = eta + Delta*np.tan((np.pi/2)*(2.*np.arange(1, N+1)-N-1)/(N+1))
 v_theta = 1e3
 
 # extrinsic input
-T = 10.0
+T = 40.0
 dt = 1e-4
 steps = int(T/dt)
-m = 2
-inp = np.random.randn(steps, m)
+m = 1
+inp = np.zeros((steps, m))
+inp[int(10.0/dt):int(30/dt), 0] = 2
 
 # initialize network
-net = Network.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_sfa_pop", weights=W,
-                        source_var="s", target_var="s_in", input_var="I_ext", output_var="s", spike_def="v",
-                        spike_var="spike", op="qif_sfa_op", node_vars={'all/qif_sfa_op/eta': etas}, dt=dt,
-                        spike_threshold=v_theta, spike_reset=-v_theta, float_precision="float64", record_vars=['s'],
-                        clear=True)
+net = Network(dt, device="cpu")
 
-# add input and output layers
-net.add_input_layer(m, train=False)
+# add qif node
+net.add_diffeq_node_from_yaml("qif", "neuron_model_templates.spiking_neurons.qif.qif_sfa", weights=W,
+                              source_var="s", target_var="s_in", input_var="I_ext", output_var="s", spike_def="v",
+                              spike_var="spike", op="qif_sfa_op", node_vars={'all/qif_sfa_op/eta': etas},
+                              spike_threshold=v_theta, spike_reset=-v_theta, float_precision="float64", clear=True)
+
+# # add input node
+# net.add_func_node("inp", m, activation_function="tanh")
+#
+# # connect input node to qif node
+# net.add_edge("inp", "qif")
 
 # perform simulation
-obs = net.run(inp, record_output=False, record_vars=[('s', True)], sampling_steps=100)
-net.fit_gd()
+obs = net.run(inp, record_output=False, record_vars=[("qif", "s", True)], sampling_steps=100)
 
 # plot results
-obs.plot('s')
+obs.plot(('qif', 's'))
 show()

@@ -74,7 +74,7 @@ def to_device(x: torch.Tensor, device: str) -> torch.Tensor:
 ###################################
 
 
-def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -> np.ndarray:
+def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete, homogeneous_weights: bool = True) -> np.ndarray:
     """Generate a coupling matrix between nodes aligned on a circle.
 
     Parameters
@@ -86,6 +86,7 @@ def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -
     spatial_distribution
         Probability distribution defined over space. Will be used to draw indices of nodes from which each node in the
         circular network receives inputs.
+    homogeneous_weights
 
     Returns
     -------
@@ -99,9 +100,50 @@ def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -
         signs = 1 * (bernoulli.rvs(p=0.5, loc=0, size=n_conns) > 0)
         signs[signs == 0] = -1
         conns = _wrap(n + idxs*signs, N)
-        C[n, conns] = 1.0/n_conns
+        conns_unique = np.unique(conns)
+        if homogeneous_weights:
+            C[n, conns_unique] = 1.0/len(conns_unique)
+        else:
+            for idx in conns_unique:
+                C[n, idx] = np.sum(conns == idx)/n_conns
     return C
 
+
+def line_connectivity(N: int, p: float, spatial_distribution: rv_discrete, homogeneous_weights: bool = True) -> np.ndarray:
+    """Generate a coupling matrix between nodes aligned on a circle.
+
+    Parameters
+    ----------
+    N
+        Number of nodes.
+    p
+        Connection probability.
+    spatial_distribution
+        Probability distribution defined over space. Will be used to draw indices of nodes from which each node in the
+        circular network receives inputs.
+    homogeneous_weights
+
+    Returns
+    -------
+    np.ndarray
+        2D coupling matrix (N x N).
+    """
+    C = np.zeros((N, N))
+    n_conns = int(N*p)
+    for n in range(N):
+        idxs = spatial_distribution.rvs(size=n_conns)
+        signs = 1 * (bernoulli.rvs(p=0.5, loc=0, size=n_conns) > 0)
+        signs[signs == 0] = -1
+        conns = n + idxs*signs
+        conns = conns[conns > 0]
+        conns = conns[conns < N]
+        conns_unique = np.unique(conns)
+        if homogeneous_weights:
+            C[n, conns_unique] = 1.0/len(conns_unique)
+        else:
+            for idx in conns_unique:
+                C[n, idx] = np.sum(conns == idx)/len(conns)
+    return C
 
 def random_connectivity(n: int, m: int, p: float, normalize: bool = True) -> np.ndarray:
     """Generate a random coupling matrix.

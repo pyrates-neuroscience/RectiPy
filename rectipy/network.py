@@ -1,7 +1,7 @@
 import torch
 from torch.nn import Module
 from typing import Union, Iterator, Callable, Tuple, Optional
-from .nodes import NN, SNN, Function
+from .nodes import RateNet, SpikeNet, ActivationFunction
 from .edges import RLS, Linear
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
@@ -76,7 +76,12 @@ class Network(Module):
         except AttributeError:
             return 0
 
-    def get_node(self, n: str) -> Union[Function, NN]:
+    @property
+    def nodes(self):
+        """Network nodes"""
+        return self.graph.nodes
+
+    def get_node(self, n: str) -> Union[ActivationFunction, RateNet]:
         """Returns node instance from the network.
         """
         return self[n]["node"]
@@ -113,7 +118,7 @@ class Network(Module):
     def add_diffeq_node_from_yaml(self, label: str, node: Union[str, NodeTemplate], input_var: str,
                                   output_var: str, weights: np.ndarray = None, source_var: str = None,
                                   target_var: str = None, spike_var: str = None, spike_def: str = None, op: str = None,
-                                  train_params: list = None, **kwargs) -> NN:
+                                  train_params: list = None, **kwargs) -> RateNet:
         """Adds an RNN node to the `Network` instance.
 
         Parameters
@@ -149,7 +154,7 @@ class Network(Module):
 
         Returns
         -------
-        NN
+        RateNet
             Instance of the RNN node that was added to the network.
         """
 
@@ -170,18 +175,18 @@ class Network(Module):
 
         # initialize rnn layer
         if spike_var is None and spike_def is None:
-            node = NN.from_yaml(node, var_dict['in_ext'], var_dict['out'], weights=weights,
-                                source_var=var_dict['svar'], target_var=var_dict['tvar'],
-                                train_params=train_params, device=self.device, dt=self.dt, **kwargs)
+            node = RateNet.from_yaml(node, var_dict['in_ext'], var_dict['out'], weights=weights,
+                                     source_var=var_dict['svar'], target_var=var_dict['tvar'],
+                                     train_params=train_params, device=self.device, dt=self.dt, **kwargs)
         elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
                              'name of the variable that spikes should be stored in (`spike_var`) as well as the '
                              'name of the variable that is used to define spikes (`spike_def`).')
         else:
-            node = SNN.from_yaml(node, var_dict['in_ext'], var_dict['out'], weights=weights,
-                                 source_var=var_dict['svar'], target_var=var_dict['tvar'],
-                                 spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                 train_params=train_params, device=self.device, dt=self.dt, **kwargs)
+            node = SpikeNet.from_yaml(node, var_dict['in_ext'], var_dict['out'], weights=weights,
+                                      source_var=var_dict['svar'], target_var=var_dict['tvar'],
+                                      spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
+                                      train_params=train_params, device=self.device, dt=self.dt, **kwargs)
 
         # remember operator mapping for each RNN layer parameter and state variable
         for p in node.parameter_names:
@@ -195,7 +200,7 @@ class Network(Module):
 
     def add_diffeq_node_from_template(self, label: str, template: CircuitTemplate, input_var: str,
                                       output_var: str, spike_var: str = None, spike_def: str = None, op: str = None,
-                                      train_params: list = None, **kwargs) -> NN:
+                                      train_params: list = None, **kwargs) -> RateNet:
         """Add RNN node to the `Network` instance from a `pyrates.CircuitTemplate`.
 
         Parameters
@@ -222,7 +227,7 @@ class Network(Module):
 
         Returns
         -------
-        NN
+        RateNet
             Instance of the RNN layer that was added to the network.
         """
 
@@ -237,16 +242,16 @@ class Network(Module):
 
         # initialize rnn layer
         if spike_var is None and spike_def is None:
-            node = NN.from_template(template, var_dict['in_ext'], var_dict['out'], train_params=train_params,
-                                    device=self.device, dt=self.dt, **kwargs)
+            node = RateNet.from_template(template, var_dict['in_ext'], var_dict['out'], train_params=train_params,
+                                         device=self.device, dt=self.dt, **kwargs)
         elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
                              'name of the variable that spikes should be stored in (`spike_var`) as well as the '
                              'name of the variable that is used to define spikes (`spike_def`).')
         else:
-            node = SNN.from_template(template, var_dict['in_ext'], var_dict['out'],
-                                     spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                     train_params=train_params, device=self.device, dt=self.dt, **kwargs)
+            node = SpikeNet.from_template(template, var_dict['in_ext'], var_dict['out'],
+                                          spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
+                                          train_params=train_params, device=self.device, dt=self.dt, **kwargs)
 
         # remember operator mapping for each RNN layer parameter and state variable
         for p in node.parameter_names:
@@ -258,7 +263,7 @@ class Network(Module):
         self.graph.add_node(label, node=node, node_type="diffeq", n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0)
         return node
 
-    def add_func_node(self, label: str, n: int, activation_function: str, **kwargs) -> Function:
+    def add_func_node(self, label: str, n: int, activation_function: str, **kwargs) -> ActivationFunction:
         """Add an activation function as a node to the network (no intrinsic dynamics, just an input-output mapping).
 
         Parameters
@@ -279,7 +284,7 @@ class Network(Module):
         ActivationFunc
             The node of the network graph.
         """
-        node = Function(n, activation_function, **kwargs)
+        node = ActivationFunction(n, activation_function, **kwargs)
         self.graph.add_node(label, node=node, node_type="func", n_out=n, n_in=n, eval=True, out=0.0)
         return node
 
@@ -331,7 +336,7 @@ class Network(Module):
         self.graph.add_edge(source, target, edge=edge, trainable=trainable, n_in=edge.n_in, n_out=edge.n_out)
         return edge
 
-    def remove_node(self, node: str) -> Union[Function, NN]:
+    def remove_node(self, node: str) -> Union[ActivationFunction, RateNet]:
         """Removes (and returns) a node from the network.
         """
         node = self[node]
@@ -398,11 +403,19 @@ class Network(Module):
         """
         g = self.graph
         for node in g:
-            for p in node["node"].parameters(recurse):
+            for p in self.get_node(node).parameters(recurse):
                 yield p
         for s, t in g.edges:
             for p in g[s][t]["edge"].parameters():
                 yield p
+
+    def detach(self) -> None:
+        """Goes through all DE-based nodes and detaches their state variables from the current graph for gradient
+        calculation."""
+        for node in self.nodes:
+            n = self.get_node(node)
+            if hasattr(n, "y"):
+                n.y.detach()
 
     def run(self, inputs: np.ndarray, sampling_steps: int = 1, verbose: bool = True, **kwargs
             ) -> Observer:
@@ -448,57 +461,10 @@ class Network(Module):
 
         return obs
 
-    def fit(self, inputs: np.ndarray, targets: np.ndarray, method: str = "gradient_descent",
-            sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
-        """High-level method for model parameter optimization. Allows to choose between the specific
-        optimization methods.
-
-        Parameters
-        ----------
-        inputs
-            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
-            input dimensions of the network.
-        targets
-            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
-            network.
-        method
-            Name of the optimization method. Possible choices are:
-            - 'gradient_descent' for gradient-descent-based optimization via `torch.autograd`
-            - 'rls' for recursive least-squares
-        sampling_steps
-            Number of training steps at which to record observables.
-        verbose
-            If true, the training progress will be displayed.
-        kwargs
-            Additional keyword arguments passed to the chosen training method.
-
-        Returns
-        -------
-        Observer
-            Instance of the `observer`.
-        """
-        # TODO: Minimize amount of code repetition across `fit` methods.
-        # TODO: Rework all training/fitting methods
-
-        super().train()
-        if method == "gradient_descent":
-            return self.fit_gd(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
-        if method == "rls":
-            return self.fit_rls(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
-        if method == "force":
-            if "feedback_weights" not in kwargs:
-                n_out = inputs.shape[1] if self.input_layer is None else self.input_layer.weights.shape[0]
-                n_in = targets.shape[1]
-                kwargs["feedback_weights"] = torch.randn(n_out, n_in, device=self.device, dtype=targets.dtype)
-            return self.fit_rls(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
-        else:
-            raise ValueError("Invalid training method. Please see the docstring of `Network.train` for valid choices "
-                             "of the keyword argument 'method'.")
-
-    def fit_gd(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
-               loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
-               update_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
-        """Optimize model parameters such that the model output matches the provided targets as close as possible.
+    def fit_bptt(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
+                 loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
+                 update_steps: int = 1, truncation_steps: int = 1000, verbose: bool = True, **kwargs) -> Observer:
+        """Optimize model parameters via backpropagation through time.
 
         Parameters
         ----------
@@ -536,6 +502,8 @@ class Network(Module):
         update_steps
             Number of training steps after which to perform an update of the trainable parameters based on the
             accumulated gradients.
+        truncation_steps
+            Number of training steps after which the gradients are truncated
         verbose
             If true, the training progress will be displayed.
         kwargs
@@ -557,6 +525,9 @@ class Network(Module):
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension.')
 
+        # compile network
+        self.compile()
+
         # initialize loss function
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
 
@@ -577,11 +548,12 @@ class Network(Module):
 
         t0 = perf_counter()
         if len(inp_tensor.shape) > 2:
-            self._train_gd_epochs(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                                  sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
+            self._bptt_epochs(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
+                              sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         else:
-            self._train_gd(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                           sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
+            self._bptt(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
+                       sampling_steps=sampling_steps, optim_steps=update_steps, truncation_steps=truncation_steps,
+                       verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
@@ -821,9 +793,9 @@ class Network(Module):
         for n in self:
             n["eval"] = True
 
-    def _train_gd(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
-                  obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 100,
-                  optim_steps: int = 1, verbose: bool = False) -> Observer:
+    def _bptt(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
+              obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 100,
+              optim_steps: int = 1, truncation_steps: int = 1000, verbose: bool = False) -> Observer:
 
         steps = inp.shape[0]
         for step in range(steps):
@@ -835,10 +807,14 @@ class Network(Module):
             error = loss(prediction, target[step, :])
 
             # error backpropagation
-            error.backward(**error_kwargs)
             if step % optim_steps == 0:
-                optimizer.step(**step_kwargs)
                 optimizer.zero_grad()
+                error.backward(**error_kwargs)
+                optimizer.step(**step_kwargs)
+
+            # gradient truncation
+            if step % truncation_steps == 0:
+                self.detach()
 
             # results storage
             if step % sampling_steps == 0:
@@ -848,45 +824,28 @@ class Network(Module):
 
         return obs
 
-    def _train_gd_epochs(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable,
-                         optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
-                         step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False
-                         ) -> Observer:
+    def _bptt_epochs(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable,
+                     optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
+                     step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False
+                     ) -> Observer:
 
         if inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
 
         epochs = inp.shape[0]
-        steps = inp.shape[1]
         for epoch in range(epochs):
 
-            # go through steps of the epoch
-            epoch_loss = 0
-            for step in range(steps):
-
-                # forward pass
-                prediction = self.forward(inp[epoch, step, :])
-
-                # loss calculation
-                error = loss(prediction, target[epoch, step, :])
-                epoch_loss += error.item()
-
-                # error backpropagation
-                error.backward(**error_kwargs)
-                if step % optim_steps == 0:
-                    optimizer.step(**step_kwargs)
-                    optimizer.zero_grad()
-
-                # results storage
-                if step % sampling_steps == 0:
-                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
+            obs = self._bptt(inp[epoch], target[epoch], loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
+                             sampling_steps, optim_steps, verbose=False)
 
             # display progress
             if verbose:
                 print(f'Progress: {epoch+1}/{epochs} training epochs finished.')
-                print(f'Epoch loss: {epoch_loss}.')
-                print('')
+                if "loss" in obs:
+                    epoch_loss = float(obs["loss"].iloc[-1])
+                    print(f'Epoch loss: {epoch_loss}.')
+                    print('')
 
         return obs
 

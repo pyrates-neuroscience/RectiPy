@@ -153,9 +153,9 @@ plt.show()
 # Now, we have all pre-requisites to start our optimization procedure.
 # To this end, we will use the `Network.train` method:
 
-net.fit_gd(inputs=inp[:train_steps], targets=targets[:train_steps], optimizer="rprop",
-           loss="mse", lr=1e-2, update_steps=100000, record_output=False, record_loss=False,
-           sampling_steps=steps, optimizer_kwargs={"etas": (0.5, 1.1), "step_sizes": (1e-4, 1e-1)})
+net.fit_bptt(inputs=inp[:train_steps], targets=targets[:train_steps], optimizer="rprop",
+             loss="mse", lr=1e-2, update_steps=100000, record_output=False, record_loss=False,
+             sampling_steps=steps, optimizer_kwargs={"etas": (0.5, 1.1), "step_sizes": (1e-4, 1e-1)})
 
 # %%
 # In this call to :code:`Network.train`, we chose to perform parameter optimization via the automated

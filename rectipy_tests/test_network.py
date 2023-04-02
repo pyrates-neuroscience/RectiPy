@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.nodes import NN, SNN
+from rectipy.nodes import RateNet, SpikeNet
 from rectipy.edges import Linear, RLS
 from rectipy import Network
 import torch
@@ -52,8 +52,8 @@ def test_3_1_init():
     t_var = "li_op/r_in"
 
     # rnn layer initialization
-    rnn = NN.from_yaml(node, weights=weights, source_var=s_var, target_var=t_var, input_var=in_var,
-                       output_var=out_var, clear=True, verbose=False)
+    rnn = RateNet.from_yaml(node, weights=weights, source_var=s_var, target_var=t_var, input_var=in_var,
+                            output_var=out_var, clear=True, verbose=False)
 
     # different network initializations
     net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
@@ -69,9 +69,9 @@ def test_3_1_init():
     # TODO: add tests for Network.from_template method
 
     # these tests should pass
-    assert isinstance(net1.rnn_layer, NN)
-    assert isinstance(net5.rnn_layer, SNN)
-    assert isinstance(net1[0], NN)
+    assert isinstance(net1.rnn_layer, RateNet)
+    assert isinstance(net5.rnn_layer, SpikeNet)
+    assert isinstance(net1[0], RateNet)
     assert net2.rnn_layer == rnn
     assert len(net3._var_map) - len(net1._var_map) == 2
     assert len(net1.rnn_layer.train_params) == 0
@@ -82,16 +82,16 @@ def test_3_1_init():
 
     # these tests should fail
     with pytest.raises(FileNotFoundError):
-        NN.from_yaml("neuron_model_templates.rate_neurons.freaky_integrator.tanh", weights=weights,
-                     source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
-                     verbose=False)
+        RateNet.from_yaml("neuron_model_templates.rate_neurons.freaky_integrator.tanh", weights=weights,
+                          source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
+                          verbose=False)
     with pytest.raises(AttributeError):
-        NN.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tan", weights=weights,
-                     source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
-                     verbose=False)
+        RateNet.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tan", weights=weights,
+                          source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
+                          verbose=False)
     with pytest.raises(KeyError):
-        NN.from_yaml(node, weights=weights, source_var="x", target_var=t_var, input_var=in_var,
-                     output_var=out_var, clear=True, verbose=False)
+        RateNet.from_yaml(node, weights=weights, source_var="x", target_var=t_var, input_var=in_var,
+                          output_var=out_var, clear=True, verbose=False)
 
 
 def test_3_2_input_layer():
@@ -140,7 +140,7 @@ def test_3_2_input_layer():
     assert tuple(net1.forward(x).shape) == (n,)
     net1.remove_input_layer()
     net1.compile()
-    assert isinstance(net1[0], NN)
+    assert isinstance(net1[0], RateNet)
 
     # these tests should fail
     with pytest.raises(RuntimeError):

@@ -10,31 +10,31 @@ import numpy as np
 from .utility import to_device
 
 
-class Function:
+class ActivationFunction:
 
-    def __init__(self, n: int, activation_function: str, **kwargs):
+    def __init__(self, n: int, func: str, **kwargs):
 
-        if activation_function == 'tanh':
-            activation_function = Tanh
-        elif activation_function == 'softmax':
-            activation_function = Softmax
+        if func == 'tanh':
+            func = Tanh
+        elif func == 'softmax':
+            func = Softmax
             if "dim" not in kwargs:
                 kwargs["dim"] = 0
-        elif activation_function == 'softmin':
-            activation_function = Softmin
+        elif func == 'softmin':
+            func = Softmin
             if "dim" not in kwargs:
                 kwargs["dim"] = 0
-        elif activation_function == 'sigmoid':
-            activation_function = Sigmoid
-        elif activation_function == "identity":
-            activation_function = Identity
+        elif func == 'sigmoid':
+            func = Sigmoid
+        elif func == "identity":
+            func = Identity
         else:
-            raise ValueError(f"Invalid keyword argument `activation_function`: {activation_function} is not a valid "
+            raise ValueError(f"Invalid keyword argument `func`: {func} is not a valid "
                              f"option. See the docstring for `Network.add_ffwd_layer` for valid options.")
 
         self.n_in = n
         self.n_out = n
-        self.func = activation_function(**kwargs)
+        self.func = func(**kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.func.forward(x)
@@ -43,7 +43,7 @@ class Function:
         return self.func.parameters(**kwargs)
 
 
-class NN(Module):
+class RateNet(Module):
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict, dt: float = 1e-3,
                  dtype: torch.dtype = torch.float64, train_params: list = None, device: str = "cpu", **kwargs):
@@ -59,14 +59,20 @@ class NN(Module):
         self._inp_ext = self._param_map["in"]
 
         # public attributes
-        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=rnn_args[0].requires_grad,
-                              device=device)
         self.dt = dt
         self.func = rnn_func
         self.device = device
-        self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
         self.n_out = int((self._stop - self._start).detach().cpu().numpy())
         self.n_in = int(self._args[self._inp_ext].shape[0])
+
+        # initialize trainable parameters
+        self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
+        for p in self.train_params:
+            p.requires_grad = True
+
+        # initialize state vector
+        require_grad = True if len(self.train_params) >= 1 else False
+        self.y = torch.tensor(rnn_args[0].detach().numpy(), dtype=dtype, requires_grad=require_grad, device=device)
 
     def __getitem__(self, item):
         try:
@@ -160,7 +166,7 @@ class NN(Module):
 
     def forward(self, x):
         self._args[self._inp_ext] = x
-        y_old = self.y.detach()
+        y_old = self.y
         dy = self.func(0, y_old, *self._args)
         self.y = y_old + self.dt * dy
         return y_old[self._start:self._stop]
@@ -191,7 +197,7 @@ class NN(Module):
             node = NodeTemplate.from_yaml(node)
 
         # initialize base circuit template
-        n = weights.shape[0]
+        n = kwargs.pop("N") if weights is None else weights.shape[0]
         nodes = {f'n{i}': node for i in range(n)}
         template = CircuitTemplate(name='reservoir', nodes=nodes)
 
@@ -242,7 +248,7 @@ class NN(Module):
         return param_mapping
 
 
-class SNN(NN):
+class SpikeNet(RateNet):
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
                  spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
@@ -281,7 +287,7 @@ class SNN(NN):
         spikes = self.y[self._spike_start:self._spike_stop] >= self._thresh
         self._args[self._spike_var] = spikes / self.dt
         self._args[self._inp_ext] = x
-        y_old = self.y.detach()
+        y_old = self.y
         dy = self.func(0, y_old, *self._args)
         self.y = y_old + self.dt * dy
         self.spike_reset(spikes)

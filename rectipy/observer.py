@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from typing import Iterable, Union, Any
+from typing import Iterable, Union, Any, Tuple
 from pandas import DataFrame
 from .utility import retrieve_from_dict
 
@@ -48,10 +48,16 @@ class Observer:
             return self._additional_storage[item]
 
     @property
-    def recorded_rnn_variables(self) -> list:
+    def recorded_state_variables(self) -> list:
         """RNN state variables that are recorded by this `Observer` instance.
         """
         return self._state_vars
+
+    @property
+    def recorded_variables(self) -> list:
+        """RNN state variables that are recorded by this `Observer` instance.
+        """
+        return list(self._recordings.keys())
 
     @property
     def recordings(self):
@@ -108,15 +114,17 @@ class Observer:
         """
         self._additional_storage[key] = val
 
-    def plot(self, y: str, x: str = None, ax: plt.Axes = None, **kwargs) -> plt.Axes:
+    def plot(self, y: Union[str, Tuple[str, str]], x: Union[str, Tuple[str, str]] = None, ax: plt.Axes = None,
+             **kwargs) -> plt.Axes:
         """Create a line plot with variable `y` on the y-axis and `x` on the x-axis.
 
         Parameters
         ----------
         y
-            Name of the variable to be plotted on the y-axis.
+            Tuple that contains the names of the node and the node variable to be plotted on the y-axis.
         x
-            Name of the variable to be plotted on the x-axis. If not provided, `y` will be plotted against time steps.
+            Tuple that contains the names of the node and the node variable to be plotted on the x-axis.
+            If not provided, `y` will be plotted against time steps.
         ax
             `matplotlib.pyplot.Axes` instance in which to plot.
         kwargs
@@ -136,18 +144,18 @@ class Observer:
         x_sig = np.asarray(self._recordings["steps"])*self._dt if x is None else self._recordings[x]
 
         ax.plot(x_sig, y_sig, **kwargs)
-        ax.set_xlabel('time' if x is None else x)
-        ax.set_ylabel(y)
+        ax.set_xlabel('time' if x is None else f"Node: {x[0]}, variable: {x[1]}")
+        ax.set_ylabel(f"Node: {y[0]}, variable: {y[1]}")
 
         return ax
 
-    def matshow(self, v: str, ax: plt.Axes = None, **kwargs) -> plt.Axes:
+    def matshow(self, v: Tuple[str, str], ax: plt.Axes = None, **kwargs) -> plt.Axes:
         """Create a 2D color plot of variable `v`.
 
         Parameters
         ----------
         v
-            Name of the variable to be plotted.
+            Tuple that contains the names of the node and the node variable to be plotted.
         ax
             `matplotlib.pyplot.Axes` instance in which to plot.
         kwargs
@@ -163,7 +171,7 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        sig = self[v]
+        sig = self._recordings[v]
         if type(sig) is not np.ndarray:
             sig = np.asarray(sig)
 
@@ -171,6 +179,6 @@ class Observer:
         im = ax.imshow(sig.T, **kwargs)
         plt.colorbar(im, ax=ax, shrink=shrink)
         ax.set_xlabel('time')
-        ax.set_ylabel(v)
+        ax.set_ylabel(f"Node: {v[0]}, variable: {v[1]}")
 
         return ax

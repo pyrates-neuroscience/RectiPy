@@ -81,6 +81,10 @@ class Network(Module):
         """Network nodes"""
         return self.graph.nodes
 
+    @property
+    def state(self):
+        return {n: self.get_node(n).y for n in self.nodes}
+
     def get_node(self, n: str) -> Union[ActivationFunction, RateNet]:
         """Returns node instance from the network.
         """
@@ -415,7 +419,16 @@ class Network(Module):
         for node in self.nodes:
             n = self.get_node(node)
             if hasattr(n, "y"):
-                n.y.detach()
+                n.detach(requires_grad=True)
+
+    def reset(self, state: dict = None):
+        for node in self.nodes:
+            n = self.get_node(node)
+            if hasattr(n, "y"):
+                if state and n in state:
+                    n.reset(state[n])
+                else:
+                    n.reset()
 
     def run(self, inputs: np.ndarray, sampling_steps: int = 1, verbose: bool = True, **kwargs
             ) -> Observer:
@@ -448,7 +461,7 @@ class Network(Module):
 
         # initialize observer
         obs = Observer(dt=self.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)
-        rec_vars = [v for v in obs.recorded_rnn_variables]
+        rec_vars = [v for v in obs.recorded_state_variables]
 
         # forward input through static network
         with torch.no_grad():
@@ -463,7 +476,7 @@ class Network(Module):
 
     def fit_bptt(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
                  loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
-                 update_steps: int = 1, truncation_steps: int = 1000, verbose: bool = True, **kwargs) -> Observer:
+                 update_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         """Optimize model parameters via backpropagation through time.
 
         Parameters
@@ -502,8 +515,6 @@ class Network(Module):
         update_steps
             Number of training steps after which to perform an update of the trainable parameters based on the
             accumulated gradients.
-        truncation_steps
-            Number of training steps after which the gradients are truncated
         verbose
             If true, the training progress will be displayed.
         kwargs
@@ -541,7 +552,7 @@ class Network(Module):
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
         obs = Observer(dt=self.dt, **obs_kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
 
         # optimization
         ##############
@@ -552,8 +563,7 @@ class Network(Module):
                               sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         else:
             self._bptt(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                       sampling_steps=sampling_steps, optim_steps=update_steps, truncation_steps=truncation_steps,
-                       verbose=verbose)
+                       sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
@@ -610,7 +620,7 @@ class Network(Module):
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
         obs = Observer(dt=self.dt, **obs_kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
 
         # optimization
         ##############
@@ -682,7 +692,7 @@ class Network(Module):
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
         obs = Observer(dt=self.dt, **obs_kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
 
         # optimization
         ##############
@@ -752,7 +762,7 @@ class Network(Module):
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
         obs = Observer(dt=self.rnn_layer.dt, **obs_kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
 
         # call testing method
         if feedback_weights is None:
@@ -795,25 +805,25 @@ class Network(Module):
 
     def _bptt(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
               obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 100,
-              optim_steps: int = 1, truncation_steps: int = 1000, verbose: bool = False) -> Observer:
+              optim_steps: int = 100, verbose: bool = False) -> Observer:
 
         steps = inp.shape[0]
+        zero = torch.zeros(1, dtype=inp.dtype)
+        error = zero
         for step in range(steps):
 
             # forward pass
             prediction = self.forward(inp[step, :])
 
             # loss calculation
-            error = loss(prediction, target[step, :])
+            error += loss(prediction, target[step, :])
 
             # error backpropagation
             if step % optim_steps == 0:
                 optimizer.zero_grad()
                 error.backward(**error_kwargs)
                 optimizer.step(**step_kwargs)
-
-            # gradient truncation
-            if step % truncation_steps == 0:
+                error = zero
                 self.detach()
 
             # results storage
@@ -826,23 +836,25 @@ class Network(Module):
 
     def _bptt_epochs(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable,
                      optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
-                     step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False
+                     step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 100, verbose: bool = False
                      ) -> Observer:
 
         if inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
 
+        y0 = self.state
         epochs = inp.shape[0]
         for epoch in range(epochs):
 
             obs = self._bptt(inp[epoch], target[epoch], loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
                              sampling_steps, optim_steps, verbose=False)
+            self.reset(y0)
 
             # display progress
             if verbose:
                 print(f'Progress: {epoch+1}/{epochs} training epochs finished.')
-                if "loss" in obs:
+                if "loss" in obs.recorded_variables:
                     epoch_loss = float(obs["loss"].iloc[-1])
                     print(f'Epoch loss: {epoch_loss}.')
                     print('')

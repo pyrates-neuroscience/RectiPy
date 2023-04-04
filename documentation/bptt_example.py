@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from rectipy import Network
 import numpy as np
 from matplotlib.pyplot import show
@@ -15,7 +17,7 @@ J0 /= np.max(np.abs(np.linalg.eigvals(J0)))
 dt = 1e-2
 
 # initialize target network
-target_net = Network(dt, device="cuda:0")
+target_net = Network(dt, device="cpu")
 target_net.add_diffeq_node_from_yaml("tanh", node=node, weights=J0, source_var="tanh_op/r",
                                      target_var="li_op/r_in", input_var="li_op/I_ext", output_var="li_op/v",
                                      clear=True, float_precision="float64")
@@ -32,7 +34,7 @@ target = target_obs["out"]
 # initialize learner net
 J1 = np.random.randn(N, N)
 J1 /= np.max(np.abs(np.linalg.eigvals(J1)))
-learner_net = Network(dt, device="cuda:0")
+learner_net = Network(dt, device="cpu")
 learner_net.add_diffeq_node_from_yaml("tanh", node=node, weights=J1, source_var="tanh_op/r",
                                       target_var="li_op/r_in", input_var="li_op/I_ext", output_var="li_op/v",
                                       clear=True, float_precision="float64", train_params=["weights"])
@@ -41,4 +43,15 @@ learner_net.add_diffeq_node_from_yaml("tanh", node=node, weights=J1, source_var=
 n_epochs = 100
 inp_epochs = np.tile(inp, (n_epochs, 1, 1))
 targets_epoch = np.tile(target, (n_epochs, 1, 1))
-obs = learner_net.fit_bptt(inp_epochs, targets_epoch, optimizer="rmsprop", retain_graph=True)
+train_obs = learner_net.fit_bptt(inp_epochs, targets_epoch, optimizer="rmsprop", retain_graph=True)
+
+# simulate fitted network dynamics
+fitted_obs = learner_net.run(inp, sampling_steps=1)
+
+# plotting
+fig, axes = plt.subplots(nrows=2, figsize=(10, 6))
+ax = axes[0]
+train_obs.plot("loss", ax=ax)
+ax = axes[1]
+fitted_obs.plot("out")
+plt.show()

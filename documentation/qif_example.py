@@ -31,11 +31,11 @@ net.add_diffeq_node_from_yaml("qif", "neuron_model_templates.spiking_neurons.qif
                               node_vars={'all/qif_sfa_op/eta': etas, 'all/qif_sfa_op/alpha': alpha, 'all/qif_sfa_op/k': k},
                               float_precision="float64", clear=True)
 
-# # add input node
-# net.add_func_node("inp", m, activation_function="tanh")
-#
-# # connect input node to qif node
-# net.add_edge("inp", "qif")
+# add input node
+net.add_func_node("inp", m, activation_function="tanh")
+
+# connect input node to qif node
+net.add_edge("inp", "qif")
 
 # perform simulation
 obs = net.run(inp, record_output=False, record_vars=[("qif", "s", True)], sampling_steps=100)

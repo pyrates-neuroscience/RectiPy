@@ -175,12 +175,16 @@ class RateNet(Module):
         for p in self.train_params:
             yield p
 
-    def detach(self):
+    def detach(self, requires_grad: bool = False):
         self.y = self.y.detach()
         self._args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self._args]
+        for v in [self.y] + self._args:
+            if type(v) is torch.Tensor:
+                v.requires_grad = requires_grad
 
-    def reset(self, y: np.ndarray, idx: np.ndarray = None):
-        # TODO: remove this method?
+    def reset(self, y: np.ndarray = None, idx: np.ndarray = None):
+        if y is None:
+            y = np.zeros_like(self.y.detach().cpu().numpy())
         if idx is None:
             self.y = torch.tensor(y, dtype=self.y.dtype, device=self.device)
         else:

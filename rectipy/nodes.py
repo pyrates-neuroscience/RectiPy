@@ -185,11 +185,12 @@ class RateNet(Module):
     def reset(self, y: np.ndarray = None, idx: np.ndarray = None):
         if y is None:
             y = np.zeros_like(self.y.detach().cpu().numpy())
+        grad = self.y.requires_grad
         if idx is None:
-            self.y = torch.tensor(y, dtype=self.y.dtype, device=self.device)
+            self.y = torch.tensor(y, dtype=self.y.dtype, device=self.device, requires_grad=grad)
         else:
             y_new = self.y.clone()
-            y_new[torch.tensor(idx, dtype=torch.long)] = torch.tensor(y, dtype=y_new.dtype)
+            y_new[torch.tensor(idx, dtype=torch.long)] = torch.tensor(y, dtype=y_new.dtype, requires_grad=grad)
             self.y = to_device(y_new, self.device)
 
     @classmethod

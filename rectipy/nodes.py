@@ -45,6 +45,8 @@ class ActivationFunction:
 
 class RateNet(Module):
 
+    state_vars = ["y"]
+
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict, dt: float = 1e-3,
                  dtype: torch.dtype = torch.float64, train_params: list = None, device: str = "cpu", **kwargs):
 
@@ -167,18 +169,24 @@ class RateNet(Module):
     def forward(self, x):
         self._args[self._inp_ext] = x
         y_old = self.y
-        dy = self.func(0, y_old, *self._args)
-        self.y = y_old + self.dt * dy
+        self.y = y_old + self.dt * self.func(0, y_old, *self._args)
         return y_old[self._start:self._stop]
 
     def parameters(self, recurse: bool = True) -> Iterator:
         for p in self.train_params:
             yield p
 
-    def detach(self, requires_grad: bool = False):
-        self.y = self.y.detach()
-        self._args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self._args]
-        for v in [self.y] + self._args:
+    def detach(self, requires_grad: bool = False, detach_params: bool = True):
+        set_grad = []
+        for key in self.state_vars:
+            v = getattr(self, key)
+            v_new = v.detach()
+            setattr(self, key, v_new)
+            set_grad.append(v_new)
+        if detach_params:
+            self._args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self._args]
+            set_grad.extend(self._args)
+        for v in set_grad:
             if type(v) is torch.Tensor:
                 v.requires_grad = requires_grad
 
@@ -255,17 +263,29 @@ class RateNet(Module):
 
 class SpikeNet(RateNet):
 
+    state_vars = ["_y_start", "_y_spike", "_y_stop"]
+
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
                  spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
                  dtype: torch.dtype = torch.float64, train_params: list = None, device: str = None, **kwargs):
 
         super().__init__(rnn_func, rnn_args, var_map, param_map, dt=dt, dtype=dtype, train_params=train_params,
-                         device=device)
+                         device=device, **kwargs)
+
+        # define spiking function
+        Spike.center = torch.tensor(kwargs.pop("spike_center", 0.5), device=self.device, dtype=self.y.dtype)
+        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 100.0), device=self.device, dtype=self.y.dtype)
+        self.spike = Spike.apply
+
+        # set private attributes
         self._spike_var = self._param_map['spike_var']
-        self._thresh = spike_threshold
-        self._reset = spike_reset
+        self._reset = torch.tensor(spike_reset, device=self.device, dtype=self.y.dtype)
+        self._thresh = torch.tensor(spike_threshold, device=self.device, dtype=self.y.dtype)
+
+        # define state variable slices for updates
         self._spike_start = torch.tensor(self._var_map['spike_def'][0], dtype=torch.int64, device=self.device)
         self._spike_stop = torch.tensor(self._var_map['spike_def'][-1], dtype=torch.int64, device=self.device)
+        self._init_state()
 
     @classmethod
     def from_yaml(cls, node: Union[str, NodeTemplate], input_var: str, output_var: str, weights: np.ndarray = None,
@@ -289,17 +309,42 @@ class SpikeNet(RateNet):
         return super().from_template(template, input_var, output_var, train_params=train_params, **kwargs)
 
     def forward(self, x):
-        spikes = self.y[self._spike_start:self._spike_stop] >= self._thresh
+        spikes = self.spike(self._y_spike - self._thresh)
         self._args[self._spike_var] = spikes / self.dt
         self._args[self._inp_ext] = x
-        y_old = self.y
-        dy = self.func(0, y_old, *self._args)
-        self.y = y_old + self.dt * dy
-        self.spike_reset(spikes)
-        return y_old[self._start:self._stop]
+        self.y = torch.cat((self._y_start, self._y_spike, self._y_stop), 0)
+        y_new = self.y + self.dt * self.func(0, self.y, *self._args)
+        self._y_start = y_new[:self._spike_start]
+        self._y_spike = torch.clamp(y_new[self._spike_start:self._spike_stop]*(1.0-spikes) + spikes*self._reset,
+                                    min=self._reset, max=self._thresh)
+        self._y_stop = y_new[self._spike_stop:]
+        return self.y[self._start:self._stop]
 
-    def spike_reset(self, spikes: torch.Tensor):
-        self.y[self._spike_start:self._spike_stop][spikes] = self._reset
+    def reset(self, y: np.ndarray = None, idx: np.ndarray = None):
+        super().reset(y=y, idx=idx)
+        self._init_state()
+
+    def _init_state(self):
+        self._y_start = self.y[:self._spike_start].clone()
+        self._y_spike = self.y[self._spike_start:self._spike_stop].clone()
+        self._y_stop = self.y[self._spike_stop:].clone()
+
+
+class Spike(torch.autograd.Function):
+
+    slope = 100.0
+    center = torch.tensor(0.5)
+
+    @staticmethod
+    def forward(ctx, x: torch.Tensor) -> torch.Tensor:
+        ctx.save_for_backward(x)
+        return torch.heaviside(x, Spike.center)
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor) -> torch.Tensor:
+        x, = ctx.saved_tensors
+        grad_input = grad_output.clone()
+        return grad_input/(1.0 + Spike.slope*torch.abs(x))**2
 
 
 def _remove_node_from_dict_keys(mapping: dict) -> dict:

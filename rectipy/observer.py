@@ -41,9 +41,9 @@ class Observer:
         self._recordings["steps"] = []
         self._additional_storage = {}
 
-    def __getitem__(self, item: str):
+    def __getitem__(self, item: Union[str, Tuple[str, str]]):
         try:
-            return DataFrame(index=self._recordings["steps"], data=self._recordings[item])
+            return self._recordings[item]
         except KeyError:
             return self._additional_storage[item]
 
@@ -67,7 +67,14 @@ class Observer:
         if self._record_loss:
             columns.append("loss")
         data = np.asarray([self[v] for v in columns]).T
-        return DataFrame(index=self._recordings["step"], data=data, columns=columns)
+        return DataFrame(index=np.asarray(self._recordings["steps"])*self._dt, data=data, columns=columns)
+
+    def get_summary(self, item: Union[str, Tuple[str, str]]):
+        try:
+            data = self.to_numpy(item)
+            return DataFrame(index=np.asarray(self._recordings["steps"])*self._dt, data=data)
+        except KeyError:
+            return self[item]
 
     def record(self, step: int, output: torch.Tensor, loss: Union[float, torch.Tensor],
                record_vars: Iterable[torch.Tensor]) -> None:
@@ -91,15 +98,10 @@ class Observer:
         recs = self._recordings
         recs["steps"].append(step)
         for key, val, reduce in zip(self._state_vars, record_vars, self._reduce_vars):
-            v = val.detach().cpu().numpy()
-            recs[key].append(np.mean(v) if reduce else v)
+            recs[key].append(torch.mean(val) if reduce else val)
         if self._record_out:
-            recs['out'].append(output.detach().cpu().numpy())
+            recs['out'].append(output)
         if self._record_loss:
-            try:
-                loss = loss.detach().cpu().numpy()
-            except AttributeError:
-                pass
             recs['loss'].append(loss)
 
     def save(self, key: str, val: Any):
@@ -113,6 +115,17 @@ class Observer:
             Object to be stored.
         """
         self._additional_storage[key] = val
+
+    def to_numpy(self, item: Union[str, Tuple[str, str]]) -> np.ndarray:
+        try:
+            val = self._recordings[item]
+        except KeyError:
+            val = self._additional_storage[item]
+        try:
+            val_numpy = np.asarray([v.detach().cpu().numpy() for v in val])
+        except AttributeError as e:
+            raise e
+        return val_numpy
 
     def plot(self, y: Union[str, Tuple[str, str]], x: Union[str, Tuple[str, str]] = None, ax: plt.Axes = None,
              **kwargs) -> plt.Axes:
@@ -140,16 +153,19 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        y_sig = np.asarray(self._recordings[y])
-        x_sig = np.asarray(self._recordings["steps"])*self._dt if x is None else self._recordings[x]
+        y_sig = self.get_summary(y)
+        if x is None:
+            ax.plot(y_sig, **kwargs)
+        else:
+            x_sig = self.get_summary(x)
+            ax.plot(x_sig, y_sig, **kwargs)
 
-        ax.plot(x_sig, y_sig, **kwargs)
-        ax.set_xlabel('time' if x is None else f"Node: {x[0]}, variable: {x[1]}")
-        ax.set_ylabel(f"Node: {y[0]}, variable: {y[1]}")
+        ax.set_xlabel('time' if x is None else f"Node: {x[0]}, variable: {x[-1]}" if type(x) is tuple else x)
+        ax.set_ylabel(f"Node: {y[0]}, variable: {y[-1]}" if type(y) is tuple else y)
 
         return ax
 
-    def matshow(self, v: Tuple[str, str], ax: plt.Axes = None, **kwargs) -> plt.Axes:
+    def matshow(self, v: Union[str, Tuple[str, str]], ax: plt.Axes = None, **kwargs) -> plt.Axes:
         """Create a 2D color plot of variable `v`.
 
         Parameters
@@ -171,7 +187,7 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        sig = self._recordings[v]
+        sig = self.get_summary(v)
         if type(sig) is not np.ndarray:
             sig = np.asarray(sig)
 
@@ -179,6 +195,6 @@ class Observer:
         im = ax.imshow(sig.T, **kwargs)
         plt.colorbar(im, ax=ax, shrink=shrink)
         ax.set_xlabel('time')
-        ax.set_ylabel(f"Node: {v[0]}, variable: {v[1]}")
+        ax.set_ylabel(f"Node: {v[0]}, variable: {v[1]}" if type(v) is tuple else v)
 
         return ax

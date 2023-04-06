@@ -103,10 +103,10 @@ class Network(Module):
         except KeyError:
             return self[node][var]
 
-    def add_node(self, label: str, node_type: str = "function", **kwargs):
+    def add_node(self, label: str, node_type: str = "activation_function", **kwargs):
 
-        if node_type == "function":
-            node = self.add_edge(label, **kwargs)
+        if node_type == "activation_function":
+            node = self.add_func_node(label, **kwargs)
         elif node_type == "differential_equation":
             node_source = kwargs.pop("node_source", "yaml")
             if node_source == "yaml":
@@ -419,7 +419,7 @@ class Network(Module):
         for node in self.nodes:
             n = self.get_node(node)
             if hasattr(n, "y"):
-                n.detach(requires_grad=True)
+                n.detach(requires_grad=True, detach_params=False)
 
     def reset(self, state: dict = None):
         for node in self.nodes:
@@ -430,7 +430,7 @@ class Network(Module):
                 else:
                     n.reset()
 
-    def run(self, inputs: np.ndarray, sampling_steps: int = 1, verbose: bool = True, **kwargs
+    def run(self, inputs: np.ndarray, sampling_steps: int = 1, verbose: bool = True, enable_grad: bool = True, **kwargs
             ) -> Observer:
         """Perform numerical integration of the input-driven network equations.
 
@@ -443,6 +443,8 @@ class Network(Module):
             Number of integration steps at which to record observables.
         verbose
             If true, the progress of the integration will be displayed.
+        enable_grad
+            If true, the simulation will be performed with gradient calculation.
         kwargs
             Additional keyword arguments used for the observation.
 
@@ -464,7 +466,8 @@ class Network(Module):
         rec_vars = [v for v in obs.recorded_state_variables]
 
         # forward input through static network
-        with torch.no_grad():
+        grad = torch.enable_grad if enable_grad else torch.no_grad
+        with grad():
             for step in range(steps):
                 output = self.forward(inp_tensor[step, :])
                 if step % sampling_steps == 0:
@@ -559,13 +562,91 @@ class Network(Module):
 
         t0 = perf_counter()
         if len(inp_tensor.shape) > 2:
-            self._bptt_epochs(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                              sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
+            self._epoch_fitting(inp_tensor, target_tensor, fitting_func=self._bptt, loss=loss, optimizer=optimizer,
+                                obs=obs, rec_vars=rec_vars, error_kwargs=error_kwargs, step_kwargs=step_kwargs,
+                                sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         else:
             self._bptt(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
                        sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
+        return obs
+
+    def fit_ridge(self, inputs: np.ndarray, targets: np.ndarray, sampling_steps: int = 100, alpha: float = 1e-4,
+                  verbose: bool = True, add_readout_node: bool = True, **kwargs) -> Observer:
+        """Train readout weights on top of the input-driven model dynamics via ridge regression.
+
+        Parameters
+        ----------
+        inputs
+            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
+            input dimensions of the network.
+        targets
+            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
+            network.
+        sampling_steps
+            Number of training steps at which to record observables.
+        alpha
+            Ridge regression regularization constant.
+        verbose
+            If true, the training progress will be displayed.
+        add_readout_node
+            If true, a readout node is added to the network, which will be connected to the current output node of the
+            network via the trained readout weights.
+        kwargs
+            Additional keyword arguments used for the observation and network simulations.
+
+        Returns
+        -------
+        Observer
+            Instance of the `observer`.
+        """
+
+        # preparations
+        ##############
+
+        # transform inputs into tensors
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
+        if inp_tensor.shape[0] != target_tensor.shape[0]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension.')
+
+        # compile network
+        self.compile()
+
+        # collect network states
+        ########################
+
+        t0 = perf_counter()
+        obs = self.run(inputs=inputs, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        t1 = perf_counter()
+        print(f'Finished network state collection after {t1-t0} s.')
+
+        # train read-out classifier
+        ###########################
+
+        t0 = perf_counter()
+
+        # ridge regression formula
+        X = torch.tensor(obs["out"].values, device=self.device)
+        X_t = X.T
+        w_out = torch.inverse(X_t @ X + alpha*torch.eye(X.shape[1])) @ X_t @ targets
+        y = X @ w_out
+
+        # progress report
+        t1 = perf_counter()
+        print(f'Finished fitting of read-out weights after {t1 - t0} s.')
+
+        # add read-out layer
+        ####################
+
+        if add_readout_node:
+            self.add_node("readout", node_type="function", n=w_out.shape[1], activation_function="identity")
+            self.add_edge(self._out_node, target="readout", weights=w_out.T)
+
+        obs.save("y", y)
+        obs.save("w_out", w_out)
         return obs
 
     def fit_rls(self, inputs: np.ndarray, targets: np.ndarray, feedback_weights: np.ndarray = None,
@@ -803,13 +884,41 @@ class Network(Module):
         for n in self:
             n["eval"] = True
 
+    def _epoch_fitting(self, inp: torch.Tensor, target: torch.Tensor, fitting_func: Callable, obs: Observer,
+                       sampling_steps: int = 100, verbose: bool = False, **kwargs) -> Observer:
+
+        if inp.shape[1] != target.shape[1]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
+
+        y0 = self.state
+        epochs = inp.shape[0]
+        epoch_losses = []
+        for epoch in range(epochs):
+
+            obs = fitting_func(inp[epoch], target[epoch], obs=obs, verbose=False, sampling_steps=sampling_steps,
+                               **kwargs)
+            self.reset(y0)
+
+            # display progress
+            epoch_loss = obs["loss"][-1]
+            epoch_losses.append(epoch_loss)
+            if verbose:
+                print(f'Progress: {epoch+1}/{epochs} training epochs finished.')
+                if "loss" in obs.recorded_variables:
+                    print(f'Epoch loss: {epoch_loss}.')
+                    print('')
+
+        obs.save("epoch_loss", epoch_losses)
+        obs.save("epochs", np.arange(epochs))
+        return obs
+
     def _bptt(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
               obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 100,
-              optim_steps: int = 100, verbose: bool = False) -> Observer:
+              optim_steps: int = 1000, verbose: bool = False) -> Observer:
 
         steps = inp.shape[0]
-        zero = torch.zeros(1, dtype=inp.dtype)
-        error = zero
+        error = torch.zeros(1, dtype=inp.dtype)
         for step in range(steps):
 
             # forward pass
@@ -819,11 +928,11 @@ class Network(Module):
             error += loss(prediction, target[step, :])
 
             # error backpropagation
-            if step % optim_steps == 0:
+            if step % optim_steps == optim_steps-1:
                 optimizer.zero_grad()
                 error.backward(**error_kwargs)
                 optimizer.step(**step_kwargs)
-                error = zero
+                error = torch.zeros(1, dtype=inp.dtype)
                 self.detach()
 
             # results storage
@@ -831,33 +940,6 @@ class Network(Module):
                 if verbose:
                     print(f'Progress: {step}/{steps} training steps finished.')
                 obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
-
-        return obs
-
-    def _bptt_epochs(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable,
-                     optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
-                     step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 100, verbose: bool = False
-                     ) -> Observer:
-
-        if inp.shape[1] != target.shape[1]:
-            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
-                             '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
-
-        y0 = self.state
-        epochs = inp.shape[0]
-        for epoch in range(epochs):
-
-            obs = self._bptt(inp[epoch], target[epoch], loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                             sampling_steps, optim_steps, verbose=False)
-            self.reset(y0)
-
-            # display progress
-            if verbose:
-                print(f'Progress: {epoch+1}/{epochs} training epochs finished.')
-                if "loss" in obs.recorded_variables:
-                    epoch_loss = float(obs["loss"].iloc[-1])
-                    print(f'Epoch loss: {epoch_loss}.')
-                    print('')
 
         return obs
 

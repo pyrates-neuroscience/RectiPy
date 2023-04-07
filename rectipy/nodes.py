@@ -273,8 +273,8 @@ class SpikeNet(RateNet):
                          device=device, **kwargs)
 
         # define spiking function
-        Spike.center = torch.tensor(kwargs.pop("spike_center", 0.5), device=self.device, dtype=self.y.dtype)
-        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 100.0), device=self.device, dtype=self.y.dtype)
+        Spike.center = torch.tensor(kwargs.pop("spike_center", 1.0), device=self.device, dtype=self.y.dtype)
+        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 10.0), device=self.device, dtype=self.y.dtype)
         self.spike = Spike.apply
 
         # set private attributes
@@ -285,6 +285,9 @@ class SpikeNet(RateNet):
         # define state variable slices for updates
         self._spike_start = torch.tensor(self._var_map['spike_def'][0], dtype=torch.int64, device=self.device)
         self._spike_stop = torch.tensor(self._var_map['spike_def'][-1], dtype=torch.int64, device=self.device)
+        self._y_start = torch.tensor(0.0)
+        self._y_spike = torch.tensor(0.0)
+        self._y_stop = torch.tensor(0.0)
         self._init_state()
 
     @classmethod
@@ -315,8 +318,7 @@ class SpikeNet(RateNet):
         self.y = torch.cat((self._y_start, self._y_spike, self._y_stop), 0)
         y_new = self.y + self.dt * self.func(0, self.y, *self._args)
         self._y_start = y_new[:self._spike_start]
-        self._y_spike = torch.clamp(y_new[self._spike_start:self._spike_stop]*(1.0-spikes) + spikes*self._reset,
-                                    min=self._reset, max=self._thresh)
+        self._y_spike = y_new[self._spike_start:self._spike_stop]*(1.0-spikes) + spikes*self._reset
         self._y_stop = y_new[self._spike_stop:]
         return self.y[self._start:self._stop]
 
@@ -332,19 +334,18 @@ class SpikeNet(RateNet):
 
 class Spike(torch.autograd.Function):
 
-    slope = 100.0
-    center = torch.tensor(0.5)
+    slope = 10.0
+    center = torch.tensor(1.0)
 
     @staticmethod
     def forward(ctx, x: torch.Tensor) -> torch.Tensor:
         ctx.save_for_backward(x)
-        return torch.heaviside(x, Spike.center)
+        return torch.heaviside(x, Spike.center).detach()
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor) -> torch.Tensor:
         x, = ctx.saved_tensors
-        grad_input = grad_output.clone()
-        return grad_input/(1.0 + Spike.slope*torch.abs(x))**2
+        return grad_output/(1.0 + Spike.slope*torch.abs(x))**2
 
 
 def _remove_node_from_dict_keys(mapping: dict) -> dict:

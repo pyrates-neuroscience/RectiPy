@@ -8,13 +8,13 @@ from matplotlib.pyplot import show
 # model parameters
 node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
 N = 200
-k = 0.1
+k = 2.0
 tau = np.random.uniform(10.0, 20.0, size=(N,))
 eta = 2.0
 J0 = np.random.randn(N, N)
 J0 /= np.max(np.abs(np.linalg.eigvals(J0)))
 dt = 1e-2
-node_vars = {"li_op/eta": eta, "li_op/tau": tau, "li_op/k": k}
+node_vars = {"all/li_op/eta": eta, "all/li_op/tau": tau, "all/li_op/k": k}
 
 # initialize target network
 target_net = Network(dt, device="cpu")
@@ -27,9 +27,9 @@ T = 100.0
 steps = int(T/dt)
 inp = np.zeros((steps, 1))
 time = np.linspace(0, T, steps)
-inp[:, 0] = np.sin(2.0*np.pi*0.2*time) * 2.0
+inp[:, 0] = np.sin(2.0*np.pi*0.2*time) * 10.0
 target_obs = target_net.run(inp, sampling_steps=1)
-target = target_obs["out"]
+target = target_obs.to_numpy("out")
 
 # initialize learner net
 J1 = np.random.randn(N, N)

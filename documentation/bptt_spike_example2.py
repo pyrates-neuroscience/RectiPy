@@ -47,13 +47,17 @@ learner_net.add_diffeq_node_from_yaml("lif", node=node, weights=J1, source_var="
                                       node_vars=node_vars, spike_threshold=v_thr, spike_reset=v_reset)
 
 # train learner net to reproduce the target
-optimizer = torch.optim.Rprop(learner_net.parameters(), lr=1e-2, etas=(0.5, 1.1), step_sizes=(1e-6, 1e-1))
-loss_fn = nn.MSELoss()
+optimizer = torch.optim.Adamax(learner_net.parameters(), lr=1e-2, betas=(0.9, 0.999))
+log_softmax_fn = nn.LogSoftmax(dim=1)
+loss_fn = nn.NLLLoss()
 
 loss_hist = []
-for e in range(100):
+target_classes = torch.argmax(torch.stack(target), 1)
+for e in range(20):
+
     output = learner_net.run(inputs=inp, sampling_steps=1, verbose=False, enable_grad=True)["out"]
-    loss_val = loss_fn(torch.stack(output), torch.stack(target))
+    log_p_y = log_softmax_fn(torch.stack(output))
+    loss_val = loss_fn(log_p_y, target_classes)
 
     loss_val.backward()
     optimizer.step()

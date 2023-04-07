@@ -430,8 +430,8 @@ class Network(Module):
                 else:
                     n.reset()
 
-    def run(self, inputs: np.ndarray, sampling_steps: int = 1, verbose: bool = True, enable_grad: bool = True, **kwargs
-            ) -> Observer:
+    def run(self, inputs: Union[np.ndarray, torch.Tensor], sampling_steps: int = 1, verbose: bool = True,
+            enable_grad: bool = True, **kwargs) -> Observer:
         """Perform numerical integration of the input-driven network equations.
 
         Parameters
@@ -456,20 +456,24 @@ class Network(Module):
 
         # transform input into tensor
         steps = inputs.shape[0]
-        inp_tensor = torch.tensor(inputs, device=self.device)
+        if type(inputs) is np.ndarray:
+            inputs = torch.tensor(inputs, device=self.device)
 
         # compile network
         self.compile()
 
         # initialize observer
-        obs = Observer(dt=self.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)
+        if "obs" in kwargs:
+            obs = kwargs.pop("obs")
+        else:
+            obs = Observer(dt=self.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)
         rec_vars = [v for v in obs.recorded_state_variables]
 
         # forward input through static network
         grad = torch.enable_grad if enable_grad else torch.no_grad
         with grad():
             for step in range(steps):
-                output = self.forward(inp_tensor[step, :])
+                output = self.forward(inputs[step, :])
                 if step % sampling_steps == 0:
                     if verbose:
                         print(f'Progress: {step}/{steps} integration steps finished.')
@@ -478,7 +482,7 @@ class Network(Module):
         return obs
 
     def fit_bptt(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
-                 loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
+                 loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 1,
                  update_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         """Optimize model parameters via backpropagation through time.
 
@@ -555,19 +559,18 @@ class Network(Module):
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
         obs = Observer(dt=self.dt, **obs_kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
 
         # optimization
         ##############
 
         t0 = perf_counter()
         if len(inp_tensor.shape) > 2:
-            self._epoch_fitting(inp_tensor, target_tensor, fitting_func=self._bptt, loss=loss, optimizer=optimizer,
-                                obs=obs, rec_vars=rec_vars, error_kwargs=error_kwargs, step_kwargs=step_kwargs,
-                                sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
+            obs = self._bptt_epochs(inp_tensor, target_tensor, loss=loss, optimizer=optimizer,
+                                    obs=obs, error_kwargs=error_kwargs, step_kwargs=step_kwargs,
+                                    sampling_steps=sampling_steps, verbose=verbose)
         else:
-            self._bptt(inp_tensor, target_tensor, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                       sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
+            obs = self._bptt(inp_tensor, target_tensor, loss, optimizer, obs, error_kwargs, step_kwargs,
+                             sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
@@ -884,8 +887,9 @@ class Network(Module):
         for n in self:
             n["eval"] = True
 
-    def _epoch_fitting(self, inp: torch.Tensor, target: torch.Tensor, fitting_func: Callable, obs: Observer,
-                       sampling_steps: int = 100, verbose: bool = False, **kwargs) -> Observer:
+    def _bptt_epochs(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
+                     obs: Observer, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 1,
+                     verbose: bool = False, **kwargs) -> Observer:
 
         if inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
@@ -896,52 +900,68 @@ class Network(Module):
         epoch_losses = []
         for epoch in range(epochs):
 
-            obs = fitting_func(inp[epoch], target[epoch], obs=obs, verbose=False, sampling_steps=sampling_steps,
-                               **kwargs)
+            # simulate network dynamics
+            obs = self.run(inp[epoch], verbose=False, sampling_steps=sampling_steps, enable_grad=True, **kwargs)
+
+            # perform gradient descent step
+            epoch_loss = self._bptt_step(torch.stack(obs["out"]), target[epoch], optimizer=optimizer, loss=loss,
+                                         error_kwargs=error_kwargs, step_kwargs=step_kwargs)
+            epoch_losses.append(epoch_loss)
+
+            # reset network
             self.reset(y0)
 
             # display progress
-            epoch_loss = obs["loss"][-1]
-            epoch_losses.append(epoch_loss)
             if verbose:
                 print(f'Progress: {epoch+1}/{epochs} training epochs finished.')
-                if "loss" in obs.recorded_variables:
-                    print(f'Epoch loss: {epoch_loss}.')
-                    print('')
+                print(f'Epoch loss: {epoch_loss}.')
+                print('')
 
         obs.save("epoch_loss", epoch_losses)
         obs.save("epochs", np.arange(epochs))
         return obs
 
     def _bptt(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
-              obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 100,
+              obs: Observer, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 100,
               optim_steps: int = 1000, verbose: bool = False) -> Observer:
 
+        # preparations
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
         steps = inp.shape[0]
-        error = torch.zeros(1, dtype=inp.dtype)
+        error = 0.0
+        predictions = []
+        old_step = 0
+
+        # optimization loop
         for step in range(steps):
 
             # forward pass
-            prediction = self.forward(inp[step, :])
+            predictions.append(self.forward(inp[step, :]))
 
-            # loss calculation
-            error += loss(prediction, target[step, :])
-
-            # error backpropagation
+            # gradient descent optimization step
             if step % optim_steps == optim_steps-1:
-                optimizer.zero_grad()
-                error.backward(**error_kwargs)
-                optimizer.step(**step_kwargs)
-                error = torch.zeros(1, dtype=inp.dtype)
+                error = self._bptt_step(torch.stack(predictions), target[old_step:step], optimizer=optimizer, loss=loss,
+                                        error_kwargs=error_kwargs, step_kwargs=step_kwargs)
                 self.detach()
+                old_step = step
+                predictions.clear()
 
             # results storage
             if step % sampling_steps == 0:
                 if verbose:
                     print(f'Progress: {step}/{steps} training steps finished.')
-                obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
+                obs.record(step, predictions[-1], error, [self[v] for v in rec_vars])
 
         return obs
+
+    @staticmethod
+    def _bptt_step(predictions: torch.Tensor, targets: torch.Tensor, optimizer: torch.optim.Optimizer,
+                   loss: Callable, error_kwargs: dict, step_kwargs: dict) -> float:
+        error = loss(predictions, targets)
+        optimizer.zero_grad()
+        error.backward(**error_kwargs)
+        optimizer.step(**step_kwargs)
+        return error.item()
 
     def _train_nofb(self, inp: torch.Tensor, targets: torch.Tensor, obs: Observer, rec_vars: list, update_steps: int = 1,
                     sampling_steps: int = 100, verbose: bool = False, tol: float = 1e-3, loss_beta: float = 0.9

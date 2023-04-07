@@ -47,24 +47,24 @@ learner_net.add_diffeq_node_from_yaml("lif", node=node, weights=J1, source_var="
                                       node_vars=node_vars, spike_threshold=v_thr, spike_reset=v_reset)
 
 # train learner net to reproduce the target
-optimizer = torch.optim.Rprop(learner_net.parameters(), lr=1e-3)
+optimizer = torch.optim.Rprop(learner_net.parameters(), lr=1e-2, etas=(0.5, 1.1), step_sizes=(1e-6, 1e-1))
 loss_fn = nn.MSELoss()
 
 loss_hist = []
-for e in range(10):
+for e in range(100):
     output = learner_net.run(inputs=inp, sampling_steps=1, verbose=False, enable_grad=True)["out"]
     loss_val = loss_fn(torch.stack(output), torch.stack(target))
 
-    optimizer.zero_grad()
     loss_val.backward()
     optimizer.step()
+    optimizer.zero_grad()
     loss_hist.append(loss_val.item())
 
     print(f"Epoch #{e} finished. Epoch loss = {loss_hist[-1]}")
     learner_net.reset()
 
 # simulate fitted network dynamics
-fitted_obs = learner_net.run(inp, sampling_steps=1)
+fitted_obs = learner_net.run(inp, sampling_steps=1, verbose=False)
 
 # plotting
 neuron_indices = np.arange(0, N, 50)

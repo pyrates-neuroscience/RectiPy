@@ -46,7 +46,7 @@ learner_net.add_diffeq_node_from_yaml("lif", node=node, weights=J1, source_var="
                                       node_vars=node_vars, spike_threshold=v_thr, spike_reset=v_reset)
 
 # train learner net to reproduce the target
-n_epochs = 10
+n_epochs = 50
 inp_epochs = np.tile(inp, (n_epochs, 1, 1))
 targets_epoch = np.tile(target, (n_epochs, 1, 1))
 train_obs = learner_net.fit_bptt(inp_epochs, targets_epoch, optimizer="rprop", retain_graph=True, lr=1e-3)

@@ -7,7 +7,7 @@ from matplotlib.colors import to_hex
 
 # model parameters
 node = "neuron_model_templates.spiking_neurons.qif.qif"
-N = 100
+N = 10
 k = 15.0
 tau = 5.0
 tau_s = 2.0
@@ -56,7 +56,7 @@ train_obs = learner_net.fit_bptt(inp_epochs, targets_epoch, optimizer="rprop", r
 fitted_obs = learner_net.run(inp, sampling_steps=1, verbose=False)
 
 # plotting
-neuron_indices = np.arange(0, N, 20)
+neuron_indices = np.arange(0, N, 2)
 cmap = plt.get_cmap("plasma", lut=len(neuron_indices))
 fig, axes = plt.subplots(nrows=3, figsize=(10, 6))
 ax = axes[0]

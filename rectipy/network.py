@@ -337,7 +337,8 @@ class Network(Module):
                              "`Network.add_output_layer` for valid options.")
 
         # add node to graph
-        self.graph.add_edge(source, target, edge=edge, trainable=trainable, n_in=edge.n_in, n_out=edge.n_out)
+        self.graph.add_edge(source, target, edge=edge.to(self.device), trainable=trainable, n_in=edge.n_in,
+                            n_out=edge.n_out)
         return edge
 
     def remove_node(self, node: str) -> Union[ActivationFunction, RateNet]:
@@ -407,7 +408,7 @@ class Network(Module):
         """
         g = self.graph
         for node in g:
-            for p in self.get_node(node).parameters(recurse):
+            for p in self.get_node(node).parameters(recurse=recurse):
                 yield p
         for s, t in g.edges:
             for p in g[s][t]["edge"].parameters():

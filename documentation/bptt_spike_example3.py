@@ -5,20 +5,20 @@ from rectipy import Network
 import numpy as np
 from matplotlib.colors import to_hex
 
-device = "cuda:0"
+device = "cpu"
 
 # model parameters
 node = "neuron_model_templates.spiking_neurons.lif.lif"
 N = 200
 k = 5.0
 tau = np.random.uniform(1.0, 5.0, size=(N,))
-tau_s = 1.0
-eta = -0.5
+tau_s = 2.0
+eta = 5.0
 v_thr = 100.0
 v_reset = -100.0
 J0 = np.random.randn(N, N)
 J0 /= np.max(np.abs(np.linalg.eigvals(J0)))
-dt = 5e-3
+dt = 2e-3
 node_vars = {"eta": eta, "tau": tau, "tau_s": tau_s, "k": k}
 
 # define input layer
@@ -52,18 +52,18 @@ for e in range(n_epochs):
 
     # define input
     targets = torch.zeros((steps,), dtype=torch.int64, device=device)
-    inp = torch.zeros((steps, m), dtype=torch.float64, device=device)
+    inp = torch.zeros((steps, m), dtype=torch.float64, device=device, requires_grad=False)
     step = 0
     while step < steps - 1:
-        mus = torch.rand(2)*10.0
+        mus = torch.rand(2)*20.0
         sigmas = mus*0.2
         for i, (mu, sigma) in enumerate(zip(mus, sigmas)):
-            inp[step:step+in_steps, i] = mu + torch.randn(in_steps, device=device) * sigma
-        targets[step:step+in_steps] = 1 if mus[0] > mus[1] else 2
+            inp[step:step+in_steps, i] = mu + torch.randn(in_steps, device=device, requires_grad=False) * sigma
+        targets[step:step+in_steps] = 0 if mus[0] > mus[1] else 1
         step += in_steps
 
     # train network
-    obs = net.run(inputs=inp, sampling_steps=1, verbose=False, enable_grad=True)
+    obs = net.run(inputs=inp, sampling_steps=1, verbose=False, enable_grad=True, record_vars=[("lif", "s", False)])
     output = obs["out"]
     log_p_y = torch.log(torch.stack(output))
     loss_val = loss_fn(log_p_y, targets)
@@ -74,7 +74,7 @@ for e in range(n_epochs):
     loss_hist.append(loss_val.item())
 
     # plotting
-    fig, axes = plt.subplots(nrows=2, figsize=(10, 6))
+    fig, axes = plt.subplots(nrows=3, figsize=(10, 6))
     ax = axes[0]
     ax.plot(loss_hist)
     ax.set_title("Epoch loss")
@@ -82,12 +82,14 @@ for e in range(n_epochs):
     ax.set_ylabel("NLL")
     ax = axes[1]
     signal = obs.to_numpy("out")
-    ax.plot(np.argmax(signal, axis=1)+1, label="fitted")
+    ax.plot(np.argmax(signal, axis=1), label="fitted")
     ax.plot(targets.detach().cpu().numpy(), label="target")
     ax.legend()
     ax.set_xlabel("time")
     ax.set_ylabel("input class")
     ax.set_title(f"Epoch loss = {loss_hist[-1]}")
+    ax = axes[2]
+    obs.plot(("lif", "s"), ax=ax)
     plt.tight_layout()
     plt.show()
 

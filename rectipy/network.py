@@ -292,7 +292,7 @@ class Network(Module):
         self.graph.add_node(label, node=node, node_type="func", n_out=n, n_in=n, eval=True, out=0.0)
         return node
 
-    def add_edge(self, source: str, target: str, weights: np.ndarray = None,
+    def add_edge(self, source: str, target: str, weights: Union[torch.Tensor, np.ndarray] = None,
                  train: Optional[str] = None, dtype: torch.dtype = torch.float64, **kwargs) -> Linear:
         """Add a feed-forward layer to the network.
 

@@ -124,7 +124,10 @@ class RateNet(Module):
         param_map = cls._get_param_indices(template, keys[1:])
         param_map = _remove_node_from_dict_keys(param_map)
         for key, var in param_mapping.items():
-            param_map[key] = param_map[var]
+            try:
+                param_map[key] = param_map[var]
+            except KeyError:
+                pass
         var_map.update(cls._get_var_indices(template, var_mapping))
         var_map = _remove_node_from_dict_keys(var_map)
 

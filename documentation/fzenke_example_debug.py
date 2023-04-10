@@ -48,7 +48,7 @@ node_vars = {"eta": eta, "tau": tau_mem, "tau_s": tau_syn, "k": 1.0}
 node = "neuron_model_templates.spiking_neurons.lif.lif"
 net = Network(time_step, device=device)
 net.add_diffeq_node_from_yaml("lif", node=node, weights=J0, source_var="s", spike_def="v", spike_var="spike",
-                              target_var="s_in", input_var="I_ext", output_var="s", clear=False,
+                              target_var="s_in", input_var="I_ext", output_var="s", clear=True,
                               float_precision="float64", op="lif_op", node_vars=node_vars, spike_threshold=v_thr,
                               spike_reset=v_reset)
 net.add_func_node(label="inp", n=nb_inputs, activation_function="identity")

@@ -68,6 +68,10 @@ loss_fn = nn.MSELoss()
 obs = net.run(inputs, sampling_steps=1, enable_grad=False, verbose=False)
 targets = torch.stack(obs["out"])
 
+# get initial dynamics of learnet network
+obs_learner = learner_net.run(inputs, sampling_steps=1, enable_grad=False, verbose=False)
+predictions_init = obs_learner.to_numpy("out")
+
 # fit learner network
 loss_hist = []
 print_steps = 100
@@ -110,6 +114,7 @@ ax.set_ylabel("MSE")
 targets = obs.to_numpy("out")
 for idx in range(n_out):
     ax = axes[idx+1]
+    ax.plot(predictions_init[:, idx], label="initial guess")
     ax.plot(predictions[:, idx], label="prediction")
     ax.plot(targets[:, idx], label="target")
     ax.legend()

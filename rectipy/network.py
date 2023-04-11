@@ -120,7 +120,7 @@ class Network(Module):
         return node
 
     def add_diffeq_node_from_yaml(self, label: str, node: Union[str, NodeTemplate], input_var: str,
-                                  output_var: str, weights: np.ndarray = None, source_var: str = None,
+                                  output_var: str, weights:np.ndarray = None, source_var: str = None,
                                   target_var: str = None, spike_var: str = None, spike_def: str = None, op: str = None,
                                   train_params: list = None, **kwargs) -> RateNet:
         """Adds an RNN node to the `Network` instance.
@@ -1199,6 +1199,8 @@ class Network(Module):
             opt = torch.optim.Adagrad
         elif optimizer == 'adadelta':
             opt = torch.optim.Adadelta
+        elif optimizer == 'adamax':
+            opt = torch.optim.Adamax
         elif optimizer == 'rmsprop':
             opt = torch.optim.RMSprop
         elif optimizer == 'rprop':

@@ -17,7 +17,7 @@ class Linear(Module):
         # finalize layer weights
         if weights is None:
             weights = torch.randn(n_out, n_in, dtype=dtype)
-        else:
+        elif type(weights) is np.ndarray:
             weights = torch.tensor(weights, dtype=dtype)
         if weights.shape[0] == n_in and weights.shape[1] == n_out:
             weights = weights.T

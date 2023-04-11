@@ -205,8 +205,8 @@ class RateNet(Module):
             self.y = to_device(y_new, self.device)
 
     @classmethod
-    def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], dt: float, weights: np.ndarray = None, source_var: str = None,
-                           target_var: str = None, **kwargs) -> tuple:
+    def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], dt: float, weights: np.ndarray = None,
+                           source_var: str = None, target_var: str = None, **kwargs) -> tuple:
 
         # initialize base node template
         if type(node) is str:
@@ -277,7 +277,7 @@ class SpikeNet(RateNet):
 
         # define spiking function
         Spike.center = torch.tensor(kwargs.pop("spike_center", 1.0), device=self.device, dtype=self.y.dtype)
-        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 10.0), device=self.device, dtype=self.y.dtype)
+        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 100.0/np.abs(spike_threshold - spike_reset)), device=self.device, dtype=self.y.dtype)
         self.spike = Spike.apply
 
         # set private attributes
@@ -316,12 +316,13 @@ class SpikeNet(RateNet):
 
     def forward(self, x):
         spikes = self.spike(self._y_spike - self._thresh)
+        reset = spikes.detach()
         self._args[self._spike_var] = spikes / self.dt
         self._args[self._inp_ext] = x
         self.y = torch.cat((self._y_start, self._y_spike, self._y_stop), 0)
         y_new = self.y + self.dt * self.func(0, self.y, *self._args)
         self._y_start = y_new[:self._spike_start]
-        self._y_spike = y_new[self._spike_start:self._spike_stop]*(1.0-spikes) + spikes*self._reset
+        self._y_spike = y_new[self._spike_start:self._spike_stop]*(1.0-reset) + reset*self._reset
         self._y_stop = y_new[self._spike_stop:]
         return self.y[self._start:self._stop]
 
@@ -343,7 +344,7 @@ class Spike(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x: torch.Tensor) -> torch.Tensor:
         ctx.save_for_backward(x)
-        return torch.heaviside(x, Spike.center).detach()
+        return torch.heaviside(x, Spike.center)
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor) -> torch.Tensor:

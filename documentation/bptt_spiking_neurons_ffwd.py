@@ -4,7 +4,7 @@ from torch import nn
 from rectipy import Network
 import numpy as np
 
-device = "cpu"
+device = "cuda:0"
 dtype = torch.float64
 
 # model parameters

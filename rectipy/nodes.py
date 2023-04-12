@@ -277,7 +277,8 @@ class SpikeNet(RateNet):
 
         # define spiking function
         Spike.center = torch.tensor(kwargs.pop("spike_center", 1.0), device=self.device, dtype=self.y.dtype)
-        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 100.0/np.abs(spike_threshold - spike_reset)), device=self.device, dtype=self.y.dtype)
+        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 200.0/np.abs(spike_threshold - spike_reset)),
+                                   device=self.device, dtype=self.y.dtype)
         self.spike = Spike.apply
 
         # set private attributes

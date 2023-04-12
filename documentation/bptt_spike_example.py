@@ -21,7 +21,7 @@ dt = 1e-2
 node_vars = {"eta": eta, "tau": tau, "tau_s": tau_s, "k": k}
 
 # define input and output layer dimensions
-n_in = 10
+n_in = 2
 n_out = 3
 W_in = np.random.randn(N, n_in)
 W_out = np.random.randn(n_out, N)
@@ -55,13 +55,13 @@ learner_net.compile()
 # define training parameters
 T = 100.0
 steps = int(T/dt)
-epochs = 1000
+epochs = 100
 inputs = torch.zeros((steps, n_in), dtype=dtype)
 omegas = [0.03, 0.05]
 time = torch.linspace(0, T, steps=steps)
 for idx, omega in enumerate(omegas):
     inputs[:, idx] = torch.sin(time*2.0*np.pi*omega)
-optimizer = torch.optim.Adamax(learner_net.parameters(), lr=2e-3, betas=(0.9, 0.999))
+optimizer = torch.optim.Adamax(learner_net.parameters(), lr=1e-2, betas=(0.9, 0.999))
 loss_fn = nn.MSELoss()
 
 # get targets
@@ -97,8 +97,9 @@ for epoch in range(epochs):
     print(f"Epoch #{epoch} finished. Current loss = {loss_hist[-1]}")
 
 # extract fitted weights of learner network
-W_in_1 = learner_net.get_edge("inp", "lif").weights.detach().numpy()
-W_out_1 = learner_net.get_edge("lif", "out").weights.detach().numpy()
+params = list(learner_net.parameters())
+W_in_1 = params[-1].detach().cpu().numpy()
+W_out_1 = params[0].detach().cpu().numpy()
 
 # get predictions
 obs_learner = learner_net.run(inputs, sampling_steps=1, enable_grad=False, verbose=False)
@@ -124,22 +125,28 @@ plt.tight_layout()
 
 fig, axes = plt.subplots(ncols=2, nrows=3, figsize=(10, 9))
 ax = axes[0, 0]
-ax.imshow(W_in_0, aspect="auto", interpolation="none")
+im = ax.imshow(W_in_0, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
 ax.set_title("Original W_in")
 ax = axes[0, 1]
-ax.imshow(W_out_0, aspect="auto", interpolation="none")
+im = ax.imshow(W_out_0, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
 ax.set_title("Original W_out")
 ax = axes[1, 0]
-ax.imshow(W_in_1, aspect="auto", interpolation="none")
+im = ax.imshow(W_in_1, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
 ax.set_title("Fitted W_in")
 ax = axes[1, 1]
-ax.imshow(W_out_1, aspect="auto", interpolation="none")
+im = ax.imshow(W_out_1, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
 ax.set_title("Fitted W_out")
 ax = axes[2, 0]
-ax.imshow(W_in_0 - W_in_1, aspect="auto", interpolation="none")
+im = ax.imshow(W_in_0 - W_in_1, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
 ax.set_title("Changes to W_in")
 ax = axes[2, 1]
-ax.imshow(W_out_0 - W_out_1, aspect="auto", interpolation="none")
+im = ax.imshow(W_out_0 - W_out_1, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
 ax.set_title("Changes to W_out")
 plt.tight_layout()
 

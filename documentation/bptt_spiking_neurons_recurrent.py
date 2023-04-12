@@ -9,7 +9,7 @@ dtype = torch.float64
 
 # model parameters
 node = "neuron_model_templates.spiking_neurons.lif.lif"
-N = 100
+N = 50
 k = 2.0
 tau = np.random.uniform(10.0, 15.0, size=(N,))
 tau_s = 5.0

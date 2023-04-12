@@ -455,10 +455,11 @@ class Network(Module):
             Instance of the `Observer`.
         """
 
-        # transform input into tensor
+        # preparations on input arguments
         steps = inputs.shape[0]
         if type(inputs) is np.ndarray:
             inputs = torch.tensor(inputs, device=self.device)
+        truncate_steps = kwargs.pop("truncate_steps", steps)
 
         # compile network
         self.compile()
@@ -479,6 +480,8 @@ class Network(Module):
                     if verbose:
                         print(f'Progress: {step}/{steps} integration steps finished.')
                     obs.record(step, output, 0.0, [self.get_var(v[0], v[1]) for v in rec_vars])
+                if truncate_steps < steps and step % truncate_steps == truncate_steps-1:
+                    self.detach()
 
         return obs
 

@@ -4,7 +4,7 @@ from torch import nn
 from rectipy import Network
 import numpy as np
 
-device = "cuda:0"
+device = "cpu"
 dtype = torch.float64
 
 # model parameters
@@ -61,7 +61,7 @@ omegas = [0.03, 0.05]
 time = torch.linspace(0, T, steps=steps)
 for idx, omega in enumerate(omegas):
     inputs[:, idx] = torch.sin(time*2.0*np.pi*omega)
-optimizer = torch.optim.Adamax(learner_net.parameters(), lr=1e-2, betas=(0.9, 0.999))
+optimizer = torch.optim.Rprop(learner_net.parameters(), lr=0.05, etas=(0.5, 1.1), step_sizes=(1e-6, 0.9))
 loss_fn = nn.MSELoss()
 
 # get targets
@@ -123,7 +123,7 @@ for idx in range(n_out):
     ax.set_ylabel("out")
 plt.tight_layout()
 
-fig, axes = plt.subplots(ncols=2, nrows=3, figsize=(10, 9))
+fig, axes = plt.subplots(ncols=2, nrows=4, figsize=(10, 10))
 ax = axes[0, 0]
 im = ax.imshow(W_in_0, aspect="auto", interpolation="none")
 plt.colorbar(im, ax=ax)
@@ -148,6 +148,14 @@ ax = axes[2, 1]
 im = ax.imshow(W_out_0 - W_out_1, aspect="auto", interpolation="none")
 plt.colorbar(im, ax=ax)
 ax.set_title("Changes to W_out")
+ax = axes[3, 0]
+im = ax.imshow(W_in, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
+ax.set_title("Target W_in")
+ax = axes[3, 1]
+im = ax.imshow(W_out, aspect="auto", interpolation="none")
+plt.colorbar(im, ax=ax)
+ax.set_title("Target W_out")
 plt.tight_layout()
 
 plt.show()

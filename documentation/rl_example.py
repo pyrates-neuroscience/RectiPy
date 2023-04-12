@@ -66,9 +66,9 @@ target[:, 0] = inp[:, 0] * inp[:, 1] / amp
 # optimization
 ##############
 
-obs = net.fit_rl(inp, targets=target, update_steps=10, verbose=True, record_output=True, record_loss=True,
-                 tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb, epsilon=0.999,
-                 delta=0.99, fb_update_steps=1000000, noise=0.01)
+obs = net.fit_eprop(inp, targets=target, update_steps=10, verbose=True, record_output=True, record_loss=True,
+                    tol=tol, loss_beta=epsilon, sampling_steps=sample_steps, feedback_weights=W_fb, epsilon=0.999,
+                    delta=0.99, fb_update_steps=1000000, noise=0.01)
 obs.plot("out")
 plt.show()
 

@@ -4,23 +4,23 @@ from torch import nn
 from rectipy import Network
 import numpy as np
 
-device = "cuda:0"
+device = "cpu"
 dtype = torch.float64
 
 # model parameters
 node = "neuron_model_templates.spiking_neurons.lif.lif"
-N = 50
+N = 10
 k = 2.0
-tau = np.random.uniform(10.0, 15.0, size=(N,))
+tau = np.random.uniform(10.0, 20.0, size=(N,))
 tau_s = 5.0
 eta = 10.0
 v_thr = 10.0
 v_reset = -10.0
-dt = 1e-2
+dt = 5e-3
 node_vars = {"eta": eta, "tau": tau, "tau_s": tau_s, "k": k}
 
 # define connectivity
-n_in = 10
+n_in = 2
 n_out = 3
 W_in = np.random.randn(N, n_in)
 J = np.random.randn(N, N)
@@ -55,13 +55,13 @@ learner_net.compile()
 # define training parameters
 T = 100.0
 steps = int(T/dt)
-epochs = 1000
+epochs = 2000
 inputs = torch.zeros((steps, n_in), dtype=dtype, device=device)
 omegas = [0.03, 0.05]
 time = torch.linspace(0, T, steps=steps)
 for idx, omega in enumerate(omegas):
-    inputs[:, idx] = torch.sin(time*2.0*np.pi*omega)
-optimizer = torch.optim.Adamax(learner_net.parameters(), lr=2e-3, betas=(0.9, 0.999))
+    inputs[:, idx] = torch.sin(time*2.0*np.pi*omega)*20.0
+optimizer = torch.optim.Rprop(learner_net.parameters(), lr=0.05, etas=(0.5, 1.1), step_sizes=(1e-6, 0.9))
 loss_fn = nn.MSELoss()
 
 # get targets
@@ -74,9 +74,6 @@ predictions_init = obs_learner.to_numpy("out")
 
 # fit learner network
 loss_hist = []
-print_steps = 100
-update_steps = 100
-loss_val = 1.0
 for epoch in range(epochs):
 
     # perform forward pass

@@ -100,7 +100,7 @@ net.add_edge("rnn", "out", train="gd")
 # with input rate parameters.
 
 train_steps = 1000000
-test_steps = 200000
+test_steps = 100000
 steps = train_steps + test_steps
 trial_steps = 10000
 channels = list(np.arange(0, m, dtype=np.int32))
@@ -179,9 +179,8 @@ net.fit_bptt(inputs=inp[:train_steps], targets=targets[:train_steps], optimizer=
 # To test whether the training was successful, we can use the :code:`Network.test` method to examine how well the model
 # can distinguish between different input combinations using a test data set:
 
-samples = 500
 obs, loss = net.test(inputs=inp[train_steps:], targets=targets[train_steps:], loss="mse",
-                     record_output=True, record_loss=False, sampling_steps=samples, record_vars=[("rnn", "s", False)])
+                     record_output=True, record_loss=False, sampling_steps=1, record_vars=[("rnn", "s", False)])
 
 print(f"Total loss on test data set: {loss}")
 
@@ -196,9 +195,9 @@ _, ax = plt.subplots(figsize=(12, 6))
 obs.matshow(("rnn", "s"), interpolation="none", aspect=0.2, ax=ax)
 
 fig, axes = plt.subplots(nrows=k, figsize=(12, 9))
-predictions = np.asarray(obs["out"])
+predictions = obs.to_numpy("out")
 for i, ax in enumerate(axes):
-    ax.plot(targets[train_steps::samples, i], "blue")
+    ax.plot(targets[train_steps:, i], "blue")
     ax.plot(predictions[:, i], "orange")
     plt.legend(["target", "prediction"])
 ax.set_xlabel("time")

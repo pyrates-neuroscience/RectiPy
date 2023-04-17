@@ -41,11 +41,14 @@ N = 5
 J = np.random.randn(N, N)*1.5
 
 # initialize network
-net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                        output_var="li_op/v", dt=1e-3)
+net = Network(dt=1e-3)
+
+# add leaky integrator node
+net.add_diffeq_node("leaky_integrator", node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in",
+                    input_var="li_op/I_ext", output_var="li_op/v")
 
 # %%
-# The above code instantiates a `rectipy.Network` with :math:`N = 5` LI neurons with random coupling weights drawn from
+# The above code implements a `rectipy.Network` with :math:`N = 5` LI neurons with random coupling weights drawn from
 # a standard Gaussian distribution with mean :math:`\mu = 0` and standard deviation :math:`\sigma = 2`. This particular
 # choice of source and target variables for the coupling implements :math:`r_i^{in} = \sum_{j=1}^N J_{ij} r_j`.
 
@@ -85,10 +88,13 @@ show()
 # `logistic function <https://en.wikipedia.org/wiki/Logistic_function>`_ that represents a non-linear mapping of
 # :math:`v_i` to the open interval :math:`(0, 1)`.
 
-# initialize network
+# remove leaky integrator node from network
+net.pop_node("leaky_integrator")
+
+# add LI neuron node with the logistic activation function
 node = "neuron_model_templates.rate_neurons.leaky_integrator.sigmoid"
-net = Network.from_yaml(node, weights=J, source_var="sigmoid_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                        output_var="li_op/v", dt=1e-3)
+net.add_diffeq_node("li_sigmoid", node, weights=J, source_var="sigmoid_op/r", target_var="li_op/r_in",
+                    input_var="li_op/I_ext", output_var="li_op/v")
 
 # perform numerical simulation
 obs = net.run(inputs=inp, sampling_steps=10)

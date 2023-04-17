@@ -25,11 +25,11 @@ inp[int(10.0/dt):int(30/dt), 0] = 3.0
 net = Network(dt, device="cpu")
 
 # add qif node
-net.add_diffeq_node_from_yaml("qif", "neuron_model_templates.spiking_neurons.qif.qif_sfa", weights=W,
-                              source_var="s", target_var="s_in", input_var="I_ext", output_var="s", spike_def="v",
-                              spike_var="spike", op="qif_sfa_op", spike_threshold=v_theta, spike_reset=-v_theta,
-                              node_vars={'all/qif_sfa_op/eta': etas, 'all/qif_sfa_op/alpha': alpha, 'all/qif_sfa_op/k': k},
-                              float_precision="float64", clear=True)
+net.add_diffeq_node("qif", "neuron_model_templates.spiking_neurons.qif.qif_sfa", weights=W, source_var="s",
+                    target_var="s_in", input_var="I_ext", output_var="s", spike_def="v", spike_var="spike",
+                    op="qif_sfa_op", spike_threshold=v_theta, spike_reset=-v_theta,
+                    node_vars={'all/qif_sfa_op/eta': etas, 'all/qif_sfa_op/alpha': alpha, 'all/qif_sfa_op/k': k},
+                    float_precision="float64", clear=True)
 
 # add input node
 net.add_func_node("inp", m, activation_function="tanh")

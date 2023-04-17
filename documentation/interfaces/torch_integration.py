@@ -43,15 +43,17 @@ k_0 = np.random.uniform(0.25, 4.0)
 tau_0 = np.random.uniform(0.25, 4.0)
 
 # target model initialization
-target = Network.from_yaml(node=node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in",
-                           input_var="li_op/I_ext", output_var="li_op/v", clear=True, dt=dt,
-                           node_vars={"all/li_op/k": k_t, "all/li_op/tau": tau_t})
+target = Network(dt=dt)
+target.add_diffeq_node("tanh", node=node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in",
+                       input_var="li_op/I_ext", output_var="li_op/v", clear=True,
+                       node_vars={"all/li_op/k": k_t, "all/li_op/tau": tau_t})
 
 # test model initialization
-learner = Network.from_yaml(node=node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in",
-                            input_var="li_op/I_ext", output_var="li_op/v", clear=True, dt=dt,
-                            node_vars={"all/li_op/k": k_0, "all/li_op/tau": tau_0},
-                            train_params=["li_op/k", "li_op/tau"])
+learner = Network(dt=dt)
+learner.add_diffeq_node("tanh", node=node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in",
+                        input_var="li_op/I_ext", output_var="li_op/v", clear=True,
+                        node_vars={"all/li_op/k": k_0, "all/li_op/tau": tau_0},
+                        train_params=["li_op/k", "li_op/tau"])
 
 print("Target network parameters: " + r"$k_t$ = " + f"{k_t}" + r", $\tau_t$ = " + f"{tau_t}.")
 print("Learner network parameters: " + r"$k_0$ = " + f"{k_0}" + r", $\tau_0$ = " + f"{tau_0}.")
@@ -112,6 +114,7 @@ ax[1].set_ylabel(r"$v$")
 # model fitting
 error, tol, step, update_steps, plot_steps, max_step = 10.0, 1e-5, 0, 1000, 100, 1000000
 mse_col, target_col, prediction_col = [], [], []
+l = torch.zeros(1)
 while error > tol and step < max_step:
 
     # calculate network outputs
@@ -121,13 +124,15 @@ while error > tol and step < max_step:
     step += 1
 
     # calculate loss
-    l = loss(targ, pred)
-    l.backward(retain_graph=True)
+    l += loss(targ, pred)
 
     # make optimization step
     if step % update_steps == 0:
+        l.backward()
         opt.step()
         opt.zero_grad()
+        l = torch.zeros(1)
+        learner.detach()
 
     # update average error
     error = 0.95 * error + 0.05 * l.item()
@@ -154,8 +159,12 @@ print("Optimized parameters: " + r"$k_*$ = " + f"{k[0]}" + r", $\tau_*$ = " + f"
 
 # %%
 # The code above demonstrates how any :code:`rectipy.Network` instance can be integrated into custom `torch` code.
-# After calling :code:`Network.compile`, the :code:`Network` instance provides the standard :code:`torch.nn.Module.forward` and
-# :code:`torch.nn.Module.parameters` methods that you can use to calculate the network output and access the trainable
-# parameters, respectively. The same holds for each layer of the :code:`Network`: :code:`rectipy.input_layer.InputLayer`,
-# :code:`rectipy.output_layer.OutputLayer`, and :code:`rectipy.rnn_layer.RNNLayer`. This allows to implement more complex
-# optimization procedures that go beyond the functions that :Code:`Network.train` provides.
+# After calling :code:`Network.compile`, the :code:`Network` instance provides the standard
+# :code:`torch.nn.Module.forward` and :code:`torch.nn.Module.parameters` methods that you can use to calculate
+# the network output and access the trainable parameters, respectively. The same holds for each node and edge in
+# the :code:`Network`. This allows to implement more complex optimization procedures that go beyond the
+# functions that :Code:`Network.fit_bptt` provides.
+# One final note: As a final part of the optimization step in the code above, we use the `Network.detach()` method to
+# implement truncated backpropagation through time. In scenarios where parameter optimization steps are performed
+# online (as we do above), this method is crucial to ensure proper gradient calculation in a compute graph with changing
+# parameter values.

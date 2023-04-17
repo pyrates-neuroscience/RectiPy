@@ -65,13 +65,16 @@ N = 5
 J = np.random.randn(N, N)*2.0
 
 # initialize network
-net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                        op="qif_op", dt=1e-3, spike_def="v", spike_var="spike")
+net = Network(dt=1e-3)
+
+# add QIF population to network
+net.add_diffeq_node("qif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
+                    op="qif_op", spike_def="v", spike_var="spike")
 
 # %%
-# The above code initializes a network of :math:`N = 5` randomly coupled QIF neurons.
-# We couple the variables :math:`s_i` to the variables :math:`s_i^{in}` via the coupling strengths given by :math:`J_{ij}`.
-# Mathematically speaking, the above code implements :math:`s_i^{in} = \sum_{j=1}^N J_{ij} s_j`.
+# The above code implements a network of :math:`N = 5` randomly coupled QIF neurons.
+# We couple the variables :math:`s_i` to the variables :math:`s_i^{in}` via the coupling strengths given
+# by :math:`J_{ij}`. Mathematically speaking, the above code implements :math:`s_i^{in} = \sum_{j=1}^N J_{ij} s_j`.
 # In addition, we define the variable :math:`I_{ext}` as input variable of the RNN and :math:`s` as its output variable.
 
 # %%
@@ -89,8 +92,8 @@ inp = np.zeros((steps, N)) + 10.0
 obs = net.run(inputs=inp, sampling_steps=10)
 
 # %%
-# We created a timeseries of constant input and fed that input to the input variable of the RNN at each integration step.
-# Let's have a look at the resulting network dynamics.
+# We created a timeseries of constant input and fed that input to the input variable of the RNN at each integration
+# step. Let's have a look at the resulting network dynamics.
 
 from matplotlib.pyplot import show, legend
 
@@ -123,10 +126,13 @@ show()
 # The effects of SFA on the macroscopic dynamics of a QIF population are described in detail in [3]_.
 # Here, we will show how they affect the RNN dynamics in a small QIF network.
 
-# initialize network
+# remove old QIF population from network
+net.pop_node("qif")
+
+# add QIF-SFA population to network
 node = "neuron_model_templates.spiking_neurons.qif.qif_sfa"
-net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                        op="qif_sfa_op", dt=1e-3, spike_def="v", spike_var="spike")
+net.add_diffeq_node("qif_sfa", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
+                    op="qif_sfa_op", spike_def="v", spike_var="spike")
 
 # perform numerical simulation
 obs = net.run(inputs=inp, sampling_steps=10)

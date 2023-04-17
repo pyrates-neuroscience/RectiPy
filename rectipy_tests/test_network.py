@@ -331,9 +331,9 @@ def test_3_6_simulation():
         res4.append(net3.get_var("rnn", var="li_op/v").detach().numpy())
 
     # these tests should pass
-    x, y = res1.get_summary("out").values.flatten(), np.asarray(res3).flatten()
+    x, y = res1.to_dataframe("out").values.flatten(), np.asarray(res3).flatten()
     assert np.mean(np.abs(x - y)) == pytest.approx(0, rel=accuracy, abs=accuracy)
-    x, y = res2.get_summary(("rnn", "li_op/v")).values.flatten(), np.asarray(res4).flatten()
+    x, y = res2.to_dataframe(("rnn", "li_op/v")).values.flatten(), np.asarray(res4).flatten()
     assert np.mean(np.abs(x - y)) == pytest.approx(0, rel=accuracy, abs=accuracy)
 
 

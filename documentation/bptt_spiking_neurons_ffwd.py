@@ -30,10 +30,9 @@ W_out_0 = np.random.randn(n_out, N)
 
 # initialize target network
 net = Network(dt, device=device)
-net.add_diffeq_node_from_yaml("lif", node=node, weights=J0, source_var="s", spike_def="v", spike_var="spike",
-                              target_var="s_in", input_var="I_ext", output_var="s", clear=True,
-                              float_precision="float64", op="lif_op", node_vars=node_vars, spike_threshold=v_thr,
-                              spike_reset=v_reset)
+net.add_diffeq_node("lif", node=node, weights=J0, source_var="s", spike_def="v", spike_var="spike", target_var="s_in",
+                    input_var="I_ext", output_var="s", clear=True, float_precision="float64", op="lif_op",
+                    node_vars=node_vars, spike_threshold=v_thr, spike_reset=v_reset)
 net.add_func_node(label="inp", n=n_in, activation_function="identity")
 net.add_edge("inp", "lif", weights=W_in)
 net.add_func_node(label="out", n=n_out, activation_function="identity")
@@ -42,10 +41,9 @@ net.compile()
 
 # initialize learner network
 learner_net = Network(dt, device=device)
-learner_net.add_diffeq_node_from_yaml("lif", node=node, weights=J0, source_var="s", spike_def="v", spike_var="spike",
-                                      target_var="s_in", input_var="I_ext", output_var="s", clear=True,
-                                      float_precision="float64", op="lif_op", node_vars=node_vars, spike_threshold=v_thr,
-                                      spike_reset=v_reset)
+learner_net.add_diffeq_node("lif", node=node, weights=J0, source_var="s", spike_def="v", spike_var="spike",
+                            target_var="s_in", input_var="I_ext", output_var="s", clear=True, float_precision="float64",
+                            op="lif_op", node_vars=node_vars, spike_threshold=v_thr, spike_reset=v_reset)
 learner_net.add_func_node(label="inp", n=n_in, activation_function="identity")
 learner_net.add_edge("inp", "lif", train="gd", weights=W_in_0)
 learner_net.add_func_node(label="out", n=n_out, activation_function="identity")

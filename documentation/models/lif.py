@@ -34,8 +34,9 @@ In this example, we will examine an RNN of LIF neurons with spike-coupling.
 #
 # We will start out by creating a random coupling matrix and implementing an RNN model of rate-coupled LIF neurons.
 
-from rectipy import Network
 import numpy as np
+
+from rectipy import Network
 
 # define network parameters
 node = "neuron_model_templates.spiking_neurons.lif.lif"
@@ -43,11 +44,14 @@ N = 5
 J = np.random.randn(N, N)*20.0
 
 # initialize network
-net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
-                        output_var="s", spike_var="spike", spike_def="v", op="lif_op")
+net = Network(dt=1e-3)
+
+# add LIF population to network
+net.add_diffeq_node("lif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
+                    output_var="s", spike_var="spike", spike_def="v", op="lif_op")
 
 # %%
-# The above code instantiates a `rectipy.Network` with :math:`N = 5` LIF neurons with random coupling weights drawn from
+# The above code implements a `rectipy.Network` with :math:`N = 5` LIF neurons with random coupling weights drawn from
 # a standard Gaussian distribution with mean :math:`\mu = 0` and standard deviation :math:`\sigma = 10`. This particular
 # choice of source and target variables for the coupling implements :math:`s_i^{in} = \sum_{j=1}^N J_{ij} s_j`.
 
@@ -66,8 +70,8 @@ inp = np.zeros((steps, N)) + 200.0
 obs = net.run(inputs=inp, sampling_steps=10)
 
 # %%
-# We created a timeseries of constant input and fed that input to the input variable of the RNN at each integration step.
-# Let's have a look at the resulting network dynamics.
+# We created a timeseries of constant input and fed that input to the input variable of the RNN at each
+# integration step. Let's have a look at the resulting network dynamics.
 
 from matplotlib.pyplot import show, legend
 

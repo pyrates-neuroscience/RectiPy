@@ -1,4 +1,4 @@
-from rectipy import Network, random_connectivity, input_connections, wta_score, readout
+from rectipy import Network, random_connectivity, input_connections, wta_score
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -7,14 +7,13 @@ import matplotlib.pyplot as plt
 ##############
 
 # network parameters
-N = 1000
-p = 0.06
+N = 200
+p = 0.1
 eta = 0.0
 Delta = 0.1
 etas = eta + Delta*np.tan((np.pi/2)*(2.*np.arange(1, N+1)-N-1)/(N+1))
-v_theta = 1e3
 Delta_in = 4.0
-J = 20.0
+J = 10.0*np.sqrt(Delta)
 
 # input parameters
 m = 5
@@ -34,8 +33,8 @@ n_syll = len(s1)
 n_reps = 100
 T_epoch = T_syll*n_syll*n_reps
 dt = 1e-3
-n_epochs = 2
-train_epochs = 1
+n_epochs = 10
+train_epochs = n_epochs-1
 
 # define extrinsic input and targets
 epoch_steps = int(T_epoch/dt)
@@ -61,43 +60,48 @@ W_in = input_connections(N, m, p_in, variance=Delta_in, zero_mean=True)
 ##############
 
 # initialize network
-net = Network.from_yaml("neuron_model_templates.spiking_neurons.qif.qif_sfa_pop", weights=W*J,
-                        source_var="s", target_var="s_in", input_var="I_ext", output_var="s", spike_def="v",
-                        spike_var="spike", op="qif_sfa_op", node_vars={'all/qif_sfa_op/eta': etas}, dt=dt,
-                        spike_threshold=v_theta, spike_reset=-v_theta, float_precision="float64", clear=True)
+net = Network(dt=dt, device="cpu")
+net.add_diffeq_node("tanh", "neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=W*J,
+                    source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext", output_var="li_op/v",
+                    node_vars={'all/li_op/eta': etas}, float_precision="float64", clear=True)
 
 # wash out initial condition
 net.run(np.zeros((init_steps, 1)), verbose=False, sampling_steps=init_steps+1)
 
 # add input layer
-net.add_input_layer(m, weights=W_in, train=False)
+net.add_func_node("inp", m, activation_function="identity")
+net.add_edge("inp", "tanh", weights=W_in)
 net.compile()
 
 coeffs = []
 for j in range(train_epochs):
 
-    # gather data
-    obs = net.run(inp[j], sampling_steps=1, verbose=False, record_output=True)
-    X = obs['out']
+    # train on epoch
+    obs = net.fit_ridge(inputs=inp[j], targets=targets[j], sampling_steps=1, verbose=False, add_readout_node=False,
+                        alpha=1e-4)
 
-    # train readout layer weights
-    _, coeffs_tmp = readout(X, targets[j], fit_intercept=False, copy_X=True)
-    coeffs.append(coeffs_tmp)
+    # store readout weights
+    coeffs.append(obs.to_numpy("w_out"))
+
+    # display progress
+    print(f"Epoch #{j+1} finished.")
 
 # add output layers
-net.add_edge(k, train=False, weights=np.mean(coeffs, axis=0))
+w_out = np.mean(coeffs, axis=0)
+net.add_func_node("readout", k, activation_function="identity")
+net.add_edge("tanh", "readout", weights=w_out)
 net.compile()
 
 # test performance on last epoch
-obs, test_loss = net.test(inp[train_epochs], targets[train_epochs], loss='ce', record_output=True, sampling_steps=1,
+obs, test_loss = net.test(inp[train_epochs], targets[train_epochs], loss='mse', record_output=True, sampling_steps=1,
                           verbose=False)
 
 # calculate WTA score
-wta = wta_score(np.asarray(obs['out']), targets[train_epochs])
+wta = wta_score(obs.to_numpy("out"), targets[train_epochs])
 print(f'Finished. Loss on test data set: {test_loss}. WTA score: {wta}.')
 
 # plot predictions vs. targets
 fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(np.argmax(obs['out'], axis=-1))
+ax.plot(np.argmax(obs.to_numpy('out'), axis=-1))
 ax.plot(np.argmax(targets[train_epochs], axis=-1))
 plt.show()

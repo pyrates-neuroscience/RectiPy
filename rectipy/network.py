@@ -587,7 +587,7 @@ class Network(Module):
         t0 = perf_counter()
 
         # ridge regression formula
-        X = torch.tensor(obs["out"].values, device=self.device)
+        X = torch.stack(obs["out"])
         X_t = X.T
         w_out = torch.inverse(X_t @ X + alpha*torch.eye(X.shape[1])) @ X_t @ targets
         y = X @ w_out
@@ -848,16 +848,16 @@ class Network(Module):
 
             # gradient descent optimization step
             if step % optim_steps == optim_steps-1:
-                error = self._bptt_step(torch.stack(predictions), target[old_step:step], optimizer=optimizer, loss=loss,
+                error = self._bptt_step(torch.stack(predictions), target[old_step:step+1], optimizer=optimizer, loss=loss,
                                         error_kwargs=error_kwargs, step_kwargs=step_kwargs)
                 self.detach()
-                old_step = step
+                old_step = step+1
                 predictions.clear()
 
             # results storage
             if step % sampling_steps == 0:
                 if verbose:
-                    print(f'Progress: {step}/{steps} training steps finished.')
+                    print(f'Progress: {step}/{steps} training steps finished. Current loss: {error}.')
                 obs.record(step, predictions[-1], error, [self[v] for v in rec_vars])
 
         return obs

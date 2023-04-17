@@ -69,7 +69,7 @@ class Observer:
         data = np.asarray([self[v] for v in columns]).T
         return DataFrame(index=np.asarray(self._recordings["steps"])*self._dt, data=data, columns=columns)
 
-    def get_summary(self, item: Union[str, Tuple[str, str]]):
+    def to_dataframe(self, item: Union[str, Tuple[str, str]]):
         try:
             data = self.to_numpy(item)
             return DataFrame(index=np.asarray(self._recordings["steps"])*self._dt, data=data)
@@ -153,12 +153,10 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        y_sig = self.get_summary(y)
         if x is None:
-            ax.plot(y_sig, **kwargs)
+            ax.plot(self.to_dataframe(y), **kwargs)
         else:
-            x_sig = self.get_summary(x)
-            ax.plot(x_sig, y_sig, **kwargs)
+            ax.plot(self.to_numpy(x), self.to_numpy(y), **kwargs)
 
         ax.set_xlabel('time' if x is None else f"Node: {x[0]}, variable: {x[-1]}" if type(x) is tuple else x)
         ax.set_ylabel(f"Node: {y[0]}, variable: {y[-1]}" if type(y) is tuple else y)
@@ -187,7 +185,7 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        sig = self.get_summary(v)
+        sig = self.to_dataframe(v)
         if type(sig) is not np.ndarray:
             sig = np.asarray(sig)
 

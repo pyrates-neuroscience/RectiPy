@@ -1,8 +1,6 @@
 import matplotlib.pyplot as plt
-
 from rectipy import Network
 import numpy as np
-from matplotlib.pyplot import show
 
 
 # model parameters
@@ -18,9 +16,9 @@ node_vars = {"all/li_op/eta": eta, "all/li_op/tau": tau, "all/li_op/k": k}
 
 # initialize target network
 target_net = Network(dt, device="cpu")
-target_net.add_diffeq_node_from_yaml("tanh", node=node, weights=J0, source_var="tanh_op/r",
-                                     target_var="li_op/r_in", input_var="li_op/I_ext", output_var="li_op/v",
-                                     clear=True, float_precision="float64", node_vars=node_vars)
+target_net.add_diffeq_node("tanh", node=node, weights=J0, source_var="tanh_op/r", target_var="li_op/r_in",
+                           input_var="li_op/I_ext", output_var="li_op/v", clear=True, float_precision="float64",
+                           node_vars=node_vars)
 
 # simulate target time series
 T = 100.0

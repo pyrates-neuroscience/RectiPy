@@ -103,27 +103,42 @@ class Network(Module):
         except KeyError:
             return self[node][var]
 
-    def add_node(self, label: str, node_type: str = "activation_function", **kwargs):
+    def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None) -> None:
+        """Add node to the network, based on an instance from `rectipy.nodes`.
 
-        if node_type == "activation_function":
-            node = self.add_func_node(label, **kwargs)
-        elif node_type == "differential_equation":
-            node_source = kwargs.pop("node_source", "yaml")
-            if node_source == "yaml":
-                node = self.add_diffeq_node_from_yaml(label, **kwargs)
-            elif node_source == "template":
-                node = self.add_diffeq_node_from_template(label, **kwargs)
-            else:
-                raise ValueError("The node source for differential equation nodes must be either 'yaml' or 'template'.")
-        else:
-            raise ValueError("Invalid node type.")
-        return node
+        Parameters
+        ----------
+        label
+            Name of the node in the network graph.
+        node
+            Instance of a class from `rectipy.nodes`.
+        node_type
+            Type of the node. Should be set to "diff_eq" for nodes that contain differential equations.
+        op
+            For differential equation-based nodes, an operator name can be passed that is used to identify variables on
+            the node.
 
-    def add_diffeq_node_from_yaml(self, label: str, node: Union[str, NodeTemplate], input_var: str,
-                                  output_var: str, weights:np.ndarray = None, source_var: str = None,
-                                  target_var: str = None, spike_var: str = None, spike_def: str = None, op: str = None,
-                                  train_params: list = None, **kwargs) -> RateNet:
-        """Adds an RNN node to the `Network` instance.
+        Returns
+        -------
+        None
+
+        """
+
+        # remember operator mapping for each RNN node parameter and state variable
+        if op:
+            for p in node.parameter_names:
+                add_op_name(op, p, self._var_map)
+            for v in node.variable_names:
+                add_op_name(op, v, self._var_map)
+
+        # add node to graph
+        self.graph.add_node(label, node=node, node_type=node_type, n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0)
+
+    def add_diffeq_node(self, label: str, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str,
+                        output_var: str, weights: np.ndarray = None, source_var: str = None, target_var: str = None,
+                        spike_var: str = None, spike_def: str = None, op: str = None, train_params: list = None,
+                        **kwargs) -> RateNet:
+        """Adds a differential equation-based RNN node to the `Network` instance.
 
         Parameters
         ----------
@@ -179,92 +194,22 @@ class Network(Module):
 
         # initialize rnn layer
         if spike_var is None and spike_def is None:
-            node = RateNet.from_yaml(node, var_dict['in_ext'], var_dict['out'], weights=weights,
-                                     source_var=var_dict['svar'], target_var=var_dict['tvar'],
-                                     train_params=train_params, device=self.device, dt=self.dt, **kwargs)
+            node = RateNet.from_pyrates(node, var_dict['in_ext'], var_dict['out'], weights=weights,
+                                        source_var=var_dict['svar'], target_var=var_dict['tvar'],
+                                        train_params=train_params, device=self.device, dt=self.dt, **kwargs)
         elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
                              'name of the variable that spikes should be stored in (`spike_var`) as well as the '
                              'name of the variable that is used to define spikes (`spike_def`).')
         else:
-            node = SpikeNet.from_yaml(node, var_dict['in_ext'], var_dict['out'], weights=weights,
-                                      source_var=var_dict['svar'], target_var=var_dict['tvar'],
-                                      spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                      train_params=train_params, device=self.device, dt=self.dt, **kwargs)
+            node = SpikeNet.from_pyrates(node, var_dict['in_ext'], var_dict['out'], weights=weights,
+                                         source_var=var_dict['svar'], target_var=var_dict['tvar'],
+                                         spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
+                                         train_params=train_params, device=self.device, dt=self.dt, **kwargs)
 
-        # remember operator mapping for each RNN layer parameter and state variable
-        for p in node.parameter_names:
-            add_op_name(op, p, self._var_map)
-        for v in node.variable_names:
-            add_op_name(op, v, self._var_map)
+        # add node to the network graph
+        self.add_node(label, node=node, node_type="diff_eq", op=op)
 
-        # add node to graph
-        self.graph.add_node(label, node=node, node_type="diffeq", n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0)
-        return node
-
-    def add_diffeq_node_from_template(self, label: str, template: CircuitTemplate, input_var: str,
-                                      output_var: str, spike_var: str = None, spike_def: str = None, op: str = None,
-                                      train_params: list = None, **kwargs) -> RateNet:
-        """Add RNN node to the `Network` instance from a `pyrates.CircuitTemplate`.
-
-        Parameters
-        ----------
-        label
-            The label of the node in the network graph.
-        template
-            Instance of a `pyrates.CircuitTemplate`. Will not be altered any further.
-        input_var
-            Name of the parameter in the node equations that input should be projected to.
-        output_var
-            Name of the variable in the node equations that should be used as output of the RNN node.
-        spike_var
-            Name of the parameter in the node equations that recurrent input from the RNN should be projected to.
-        spike_def
-            Name of the variable in the node equations that should be used to determine spikes in the network.
-        op
-            Name of the operator in which all the above variables can be found. If not provided, it is assumed that
-            the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
-        train_params
-            Names of all RNN parameters that should be made available for optimization.
-        kwargs
-            Additional keyword arguments provided to the `RNNLayer` (or `SRNNLayer` in case of spiking neurons).
-
-        Returns
-        -------
-        RateNet
-            Instance of the RNN layer that was added to the network.
-        """
-
-        # add operator key to variable names
-        var_dict = {'in_ext': input_var, 'in_net': spike_var, 'out': output_var, 'spike': spike_def}
-        self._var_map = {}
-        if op is not None:
-            for key, var in var_dict.copy().items():
-                var_dict[key] = add_op_name(op, var, self._var_map)
-            if train_params:
-                train_params = [add_op_name(op, p, self._var_map) for p in train_params]
-
-        # initialize rnn layer
-        if spike_var is None and spike_def is None:
-            node = RateNet.from_template(template, var_dict['in_ext'], var_dict['out'], train_params=train_params,
-                                         device=self.device, dt=self.dt, **kwargs)
-        elif spike_var is None or spike_def is None:
-            raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
-                             'name of the variable that spikes should be stored in (`spike_var`) as well as the '
-                             'name of the variable that is used to define spikes (`spike_def`).')
-        else:
-            node = SpikeNet.from_template(template, var_dict['in_ext'], var_dict['out'],
-                                          spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                          train_params=train_params, device=self.device, dt=self.dt, **kwargs)
-
-        # remember operator mapping for each RNN layer parameter and state variable
-        for p in node.parameter_names:
-            add_op_name(op, p, self._var_map)
-        for v in node.variable_names:
-            add_op_name(op, v, self._var_map)
-
-        # add node to graph
-        self.graph.add_node(label, node=node, node_type="diffeq", n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0)
         return node
 
     def add_func_node(self, label: str, n: int, activation_function: str, **kwargs) -> ActivationFunction:
@@ -288,8 +233,13 @@ class Network(Module):
         ActivationFunc
             The node of the network graph.
         """
+
+        # create node instance
         node = ActivationFunction(n, activation_function, **kwargs)
-        self.graph.add_node(label, node=node, node_type="func", n_out=n, n_in=n, eval=True, out=0.0)
+
+        # add node to the network graph
+        self.add_node(label, node=node, node_type="diff_eq")
+
         return node
 
     def add_edge(self, source: str, target: str, weights: Union[torch.Tensor, np.ndarray] = None,
@@ -341,18 +291,19 @@ class Network(Module):
                             n_out=edge.n_out)
         return edge
 
-    def remove_node(self, node: str) -> Union[ActivationFunction, RateNet]:
+    def pop_node(self, node: str) -> Union[ActivationFunction, RateNet]:
         """Removes (and returns) a node from the network.
         """
-        node = self[node]
+        node_data = self.get_node(node)
         self.graph.remove_node(node)
-        return node["node"]
+        return node_data
 
-    def remove_edge(self, source: str, target: str) -> Linear:
+    def pop_edge(self, source: str, target: str) -> Linear:
         """Removes (and returns) an edge from the network.
         """
-        edge = self.graph.remove_edge(source, target)
-        return edge["edge"]
+        edge = self.get_edge(source, target)
+        self.graph.remove_edge(source, target)
+        return edge
 
     def compile(self):
 
@@ -649,7 +600,7 @@ class Network(Module):
         ####################
 
         if add_readout_node:
-            self.add_node("readout", node_type="function", n=w_out.shape[1], activation_function="identity")
+            self.add_func_node("readout", node_type="function", n=w_out.shape[1], activation_function="identity")
             self.add_edge(self._out_node, target="readout", weights=w_out.T)
 
         obs.save("y", y)

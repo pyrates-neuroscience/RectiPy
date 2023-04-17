@@ -65,7 +65,8 @@ class RateNet(Module):
         self.func = rnn_func
         self.device = device
         self.n_out = int((self._stop - self._start).detach().cpu().numpy())
-        self.n_in = int(self._args[self._inp_ext].shape[0])
+        in_arg = self._args[self._inp_ext]
+        self.n_in = int(in_arg.shape[0]) if hasattr(in_arg, "shape") else 1
 
         # initialize trainable parameters
         self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
@@ -97,8 +98,9 @@ class RateNet(Module):
         return list(self._var_map.keys())
 
     @classmethod
-    def from_yaml(cls, node: Union[str, NodeTemplate], input_var: str, output_var: str, weights: np.ndarray = None,
-                  source_var: str = None, target_var: str = None, train_params: list = None, **kwargs):
+    def from_pyrates(cls, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str, output_var: str,
+                     weights: np.ndarray = None, source_var: str = None, target_var: str = None,
+                     train_params: list = None, **kwargs):
 
         # extract keyword arguments for initialization
         dt = kwargs.pop('dt', 1e-3)
@@ -113,9 +115,15 @@ class RateNet(Module):
 
         # generate rnn template and function
         try:
-            func, args, keys, template, var_map = \
-                cls._circuit_from_yaml(node, dt, weights=weights, source_var=source_var, target_var=target_var,
-                                       **kwargs)
+            if isinstance(node, CircuitTemplate):
+                template = node
+                var_map = var_mapping
+                func, args, keys, state_var_indices = node.get_run_func('rnn_layer', dt, backend='torch', clear=False,
+                                                                        inplace_vectorfield=False, **kwargs)
+            else:
+                func, args, keys, template, var_map = cls._circuit_from_yaml(node, dt, weights=weights,
+                                                                             source_var=source_var,
+                                                                             target_var=target_var, **kwargs)
         except Exception as e:
             clear_frontend_caches()
             raise e
@@ -131,43 +139,10 @@ class RateNet(Module):
         var_map.update(cls._get_var_indices(template, var_mapping))
         var_map = _remove_node_from_dict_keys(var_map)
 
+        # clean up and return an instance of the class
         if clear_template:
             clear(template)
         return cls(func, args, var_map, param_map, dt=dt, train_params=train_params, dtype=dtype, **kwargs)
-
-    @classmethod
-    def from_template(cls, template: Union[str, CircuitTemplate], input_var: str, output_var: str,
-                      train_params: list = None, device: str = "cpu", **kwargs):
-
-        # extract keyword arguments for initialization
-        dt = kwargs.pop('dt', 1e-3)
-        clear_template = kwargs.pop('clear', True)
-        dtype = kwargs.pop('dtype', torch.float64)
-        kwargs['float_precision'] = str(dtype).split('.')[-1]
-        param_mapping = kwargs.pop("param_mapping", {})
-        var_map = kwargs.pop("var_mapping", {})
-        var_map["out"] = output_var
-
-        # generate rnn template and function
-        try:
-            func, args, keys, state_var_indices = template.get_run_func('rnn_layer', dt, backend='torch', clear=False,
-                                                                        inplace_vectorfield=False, **kwargs)
-        except Exception as e:
-            clear_frontend_caches()
-            raise e
-
-        # get parameter and variable indices
-        param_map = cls._get_param_indices(template, keys[1:])
-        param_map = _remove_node_from_dict_keys(param_map)
-        for key, var in param_mapping.items():
-            param_map[key] = param_map[var]
-        var_map.update(cls._get_var_indices(template, var_map))
-        var_map = _remove_node_from_dict_keys(var_map)
-
-        if clear_template:
-            clear(template)
-        return cls(func, args, var_map, param_map, dt=dt, train_params=train_params, dtype=dtype, device=device,
-                   **kwargs)
 
     def forward(self, x):
         self._args[self._inp_ext] = x
@@ -295,25 +270,16 @@ class SpikeNet(RateNet):
         self._init_state()
 
     @classmethod
-    def from_yaml(cls, node: Union[str, NodeTemplate], input_var: str, output_var: str, weights: np.ndarray = None,
-                  source_var: str = None, target_var: str = None, spike_var: str = 'spike', spike_def: str = 'v',
-                  train_params: list = None, **kwargs):
+    def from_pyrates(cls, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str, output_var: str,
+                     weights: np.ndarray = None, source_var: str = None, target_var: str = None,
+                     spike_var: str = 'spike', spike_def: str = 'v', train_params: list = None, **kwargs):
 
         # extract keyword arguments for initialization
         kwargs["param_mapping"] = {"spike_var": spike_var}
         kwargs["var_mapping"] = {"spike_def": spike_def}
 
-        return super().from_yaml(node, input_var, output_var, weights, source_var, target_var,
-                                 train_params=train_params, **kwargs)
-
-    @classmethod
-    def from_template(cls, template: Union[str, CircuitTemplate], input_var: str, output_var: str,
-                      spike_var: str = 'spike', spike_def: str = 'v', train_params: list = None, **kwargs):
-        # extract keyword arguments for initialization
-        kwargs["param_mapping"] = {"spike_var": spike_var}
-        kwargs["var_mapping"] = {"spike_def": spike_def}
-
-        return super().from_template(template, input_var, output_var, train_params=train_params, **kwargs)
+        return super().from_pyrates(node, input_var, output_var, weights, source_var, target_var,
+                                    train_params=train_params, **kwargs)
 
     def forward(self, x):
         spikes = self.spike(self._y_spike - self._thresh)

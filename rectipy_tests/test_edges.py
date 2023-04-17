@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.edges import Linear, RLS, ActivationFunc
+from rectipy.edges import Linear, RLS
 from torch.nn import Linear as TorchLinear
 import pytest
 import numpy as np
@@ -31,8 +31,8 @@ accuracy = 1e-4
 # tests
 #######
 
-def test_1_1_linear_layer():
-    """Testing functionalities of the `rectipy.ffwd_layer.Linear` class.
+def test_1_1_linear():
+    """Testing functionalities of the `rectipy.edges.Linear` class.
     """
 
     # preparations
@@ -93,7 +93,7 @@ def test_1_1_linear_layer():
 
 
 def test_1_2_rls_layer():
-    """Tests the functionalities of the `rectipy.ffwd_layer.RLSLayer` class.
+    """Tests the functionalities of the `rectipy.edges.RLSLayer` class.
     """
 
     # preparations
@@ -152,36 +152,3 @@ def test_1_2_rls_layer():
         rls1.forward(torch.randn(n+1, dtype=dtype))
         rls1.forward(torch.randn(n, dtype=torch.float32))
         rls1.update(x, torch.randn(m+1, dtype=dtype), torch.randn(m+1, dtype=dtype))
-
-
-def test_1_3_layerstack():
-    """Tests the functionalities of the `rectipy.ffwd_layer.LayerStack` class.
-    """
-
-    # parameters
-    n = 10
-    m = 2
-    weights = np.random.randn(m, n)
-    x = torch.randn(n, dtype=torch.float64)
-
-    # create different output layer instances
-    out1 = ActivationFunc(Linear(n, m))
-    out2 = ActivationFunc(Linear(n, m, weights=weights), activation_function='tanh')
-    out3 = ActivationFunc(Linear(n, m + 1, dtype=torch.float32), activation_function="softmax")
-
-    # these tests should pass
-    assert isinstance(out1, torch.nn.Sequential)
-    assert isinstance(out1[0], Linear)
-    assert isinstance(out1[1], torch.nn.Identity)
-    assert isinstance(out2[1], torch.nn.Tanh)
-    assert out3[0].weights.shape[0] - out2[0].weights.shape[0] == 1
-    assert np.abs(torch.sum(out2.forward(x) - out1.forward(x)).detach().numpy()) > 0.0
-    assert len(out1) == 2
-
-    # these tests should fail
-    with pytest.raises(RuntimeError):
-        out2.forward(x)
-        out3.forward(x)
-        out2.forward(x) - out3.forward(x)
-    with pytest.raises(ValueError):
-        ActivationFunc(Linear(n, m), activation_function='invalid')

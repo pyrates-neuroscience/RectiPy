@@ -55,13 +55,13 @@ learner_net.compile()
 # define training parameters
 T = 100.0
 steps = int(T/dt)
-epochs = 2000
+epochs = 5000
 inputs = torch.zeros((steps, n_in), dtype=dtype, device=device)
 omegas = [0.03, 0.05]
 time = torch.linspace(0, T, steps=steps)
 for idx, omega in enumerate(omegas):
-    inputs[:, idx] = torch.sin(time*2.0*np.pi*omega)*20.0
-optimizer = torch.optim.Rprop(learner_net.parameters(), lr=0.05, etas=(0.5, 1.1), step_sizes=(1e-6, 0.9))
+    inputs[:, idx] = torch.sin(time*2.0*np.pi*omega)*40.0
+optimizer = torch.optim.Adadelta(learner_net.parameters(), lr=0.5, rho=0.9, eps=1e-6)
 loss_fn = nn.MSELoss()
 
 # get targets

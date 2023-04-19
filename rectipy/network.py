@@ -226,7 +226,8 @@ class Network(Module):
             - 'tanh' for `torch.nn.Tanh()`
             - 'sigmoid' for `torch.nn.Sigmoid()`
             - 'softmax' for `torch.nn.Softmax(dim=0)`
-            - `softmin` for `torch.nn.Softmin(dim=0)`
+            - 'softmin' for `torch.nn.Softmin(dim=0)`
+            - 'log_softmax' for `torch.nn.LogSoftmax(dim=0)`
 
         Returns
         -------

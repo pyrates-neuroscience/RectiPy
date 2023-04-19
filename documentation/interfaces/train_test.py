@@ -25,7 +25,7 @@ import numpy as np
 from rectipy import Network, random_connectivity
 
 # network parameters
-N = 500
+N = 800
 p = 0.1
 node = "neuron_model_templates.spiking_neurons.qif.qif_sfa"
 
@@ -60,7 +60,7 @@ m = 3
 p_in = 0.2
 
 # generate input weights
-W_in = input_connections(N, m, p_in, variance=5.0)
+W_in = input_connections(N, m, p_in, variance=5.0, zero_mean=True)
 
 # add input layer
 net.add_func_node("inp", m, activation_function="identity")
@@ -78,7 +78,7 @@ net.add_edge("inp", "rnn", weights=W_in, train=None)
 
 # readout layer parameters
 k = 3
-activation_function = "softmax"
+activation_function = "log_softmax"
 
 # add readout layer
 net.add_func_node("out", k, activation_function=activation_function)
@@ -126,10 +126,11 @@ while i*trial_steps < steps:
 
 import matplotlib.pyplot as plt
 
-plt.imshow(inp[:100000].T, aspect=4000.0, interpolation="none")
-plt.xlabel("training steps")
-plt.ylabel("input channel")
-plt.colorbar(label="# spikes", shrink=0.2)
+fig, ax = plt.subplots(figsize=(10, 4))
+im = ax.imshow(inp[train_steps:].T, aspect="auto", interpolation="none")
+ax.set_xlabel("training steps")
+ax.set_ylabel("input channel")
+plt.colorbar(im, ax=ax, label="# spikes", shrink=0.2)
 plt.show()
 
 # %%
@@ -145,9 +146,10 @@ for i in range(steps):
     elif active_channels[i, 1] * active_channels[i, 2] > 0:
         targets[i, 2] = 1.0
 
-plt.imshow(targets[:100000].T, aspect=4000.0, interpolation="none")
-plt.xlabel("training steps")
-plt.ylabel("output channel")
+fig, ax = plt.subplots(figsize=(10, 4))
+im = ax.imshow(targets[train_steps:].T, aspect="auto", interpolation="none")
+ax.set_xlabel("training steps")
+ax.set_ylabel("output channel")
 plt.show()
 
 # %%
@@ -157,9 +159,10 @@ plt.show()
 # Now, we have all pre-requisites to start our optimization procedure.
 # To this end, we will use the `Network.train` method:
 
-net.fit_bptt(inputs=inp[:train_steps], targets=targets[:train_steps], optimizer="rprop",
-             loss="mse", lr=1e-2, update_steps=10000, record_output=False, record_loss=False,
-             sampling_steps=100000, optimizer_kwargs={"etas": (0.5, 1.1), "step_sizes": (1e-4, 1e-1)})
+net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], axis=1), optimizer="rprop",
+             loss="nll", lr=1e-3, update_steps=100000, record_output=False, record_loss=False,
+             sampling_steps=100000, optimizer_kwargs={"etas": (0.5, 1.1), "step_sizes": (1e-5, 1e-1)},
+             verbose=True)
 
 # %%
 # In this call to :code:`Network.fit_bptt`, we chose to perform parameter optimization via backpropagation through time
@@ -179,7 +182,7 @@ net.fit_bptt(inputs=inp[:train_steps], targets=targets[:train_steps], optimizer=
 # To test whether the training was successful, we can use the :code:`Network.test` method to examine how well the model
 # can distinguish between different input combinations using a test data set:
 
-obs, loss = net.test(inputs=inp[train_steps:], targets=targets[train_steps:], loss="mse",
+obs, loss = net.test(inputs=inp[train_steps:], targets=targets[train_steps:], loss="mse", verbose=False,
                      record_output=True, record_loss=False, sampling_steps=1, record_vars=[("rnn", "s", False)])
 
 print(f"Total loss on test data set: {loss}")
@@ -192,10 +195,10 @@ print(f"Total loss on test data set: {loss}")
 # on the test data:
 
 _, ax = plt.subplots(figsize=(12, 6))
-obs.matshow(("rnn", "s"), interpolation="none", aspect=0.2, ax=ax)
+obs.matshow(("rnn", "s"), interpolation="none", aspect="auto", ax=ax)
 
-fig, axes = plt.subplots(nrows=k, figsize=(12, 9))
-predictions = obs.to_numpy("out")
+_, axes = plt.subplots(nrows=k, figsize=(12, 9))
+predictions = np.exp(obs.to_numpy("out"))
 for i, ax in enumerate(axes):
     ax.plot(targets[train_steps:, i], "blue")
     ax.plot(predictions[:, i], "orange")

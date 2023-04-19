@@ -33,10 +33,10 @@ target = target_obs.to_numpy("out")
 J1 = np.random.randn(N, N)
 J1 /= np.max(np.abs(np.linalg.eigvals(J1)))
 learner_net = Network(dt, device="cpu")
-learner_net.add_diffeq_node_from_yaml("tanh", node=node, weights=J1, source_var="tanh_op/r",
-                                      target_var="li_op/r_in", input_var="li_op/I_ext", output_var="li_op/v",
-                                      clear=True, float_precision="float64", train_params=["weights"],
-                                      node_vars=node_vars)
+learner_net.add_diffeq_node("tanh", node=node, weights=J1, source_var="tanh_op/r",
+                            target_var="li_op/r_in", input_var="li_op/I_ext", output_var="li_op/v",
+                            clear=True, float_precision="float64", train_params=["weights"],
+                            node_vars=node_vars)
 
 # train learner net to reproduce the target
 n_epochs = 100

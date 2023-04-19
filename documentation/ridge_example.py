@@ -7,13 +7,10 @@ import matplotlib.pyplot as plt
 ##############
 
 # network parameters
-N = 200
+N = 100
 p = 0.1
-eta = 0.0
-Delta = 0.1
-etas = eta + Delta*np.tan((np.pi/2)*(2.*np.arange(1, N+1)-N-1)/(N+1))
-Delta_in = 4.0
-J = 10.0*np.sqrt(Delta)
+Delta_in = 2.0
+J = 2.0
 
 # input parameters
 m = 5
@@ -27,13 +24,13 @@ signals = [s1, s2, s3]
 k = len(signals)
 
 # training parameters
-T_init = 50.0
-T_syll = 0.5
+T_init = 100.0
+T_syll = 1.0
 n_syll = len(s1)
 n_reps = 100
 T_epoch = T_syll*n_syll*n_reps
 dt = 1e-3
-n_epochs = 10
+n_epochs = 21
 train_epochs = n_epochs-1
 
 # define extrinsic input and targets
@@ -63,7 +60,7 @@ W_in = input_connections(N, m, p_in, variance=Delta_in, zero_mean=True)
 net = Network(dt=dt, device="cpu")
 net.add_diffeq_node("tanh", "neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=W*J,
                     source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext", output_var="li_op/v",
-                    node_vars={'all/li_op/eta': etas}, float_precision="float64", clear=True)
+                    float_precision="float64", clear=True)
 
 # wash out initial condition
 net.run(np.zeros((init_steps, 1)), verbose=False, sampling_steps=init_steps+1)
@@ -101,7 +98,12 @@ wta = wta_score(obs.to_numpy("out"), targets[train_epochs])
 print(f'Finished. Loss on test data set: {test_loss}. WTA score: {wta}.')
 
 # plot predictions vs. targets
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(np.argmax(obs.to_numpy('out'), axis=-1))
-ax.plot(np.argmax(targets[train_epochs], axis=-1))
+fig, axes = plt.subplots(nrows=k, figsize=(12, 9))
+predictions = obs.to_numpy("out")
+for i, ax in enumerate(axes):
+    ax.plot(targets[train_epochs, :, i], "blue", label="target")
+    ax.plot(predictions[:, i], "orange", label="prediction")
+    ax.legend()
+    ax.set_xlabel("time")
+    ax.set_ylabel("out")
 plt.show()

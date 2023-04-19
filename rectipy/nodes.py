@@ -4,7 +4,7 @@ Contains the network classes, which are the main interfaces for the user to inte
 
 from pyrates import NodeTemplate, CircuitTemplate, clear, clear_frontend_caches
 import torch
-from torch.nn import Module, Tanh, Softmax, Softmin, Sigmoid, Identity
+from torch.nn import Module, Tanh, Softmax, Softmin, Sigmoid, Identity, LogSoftmax
 from typing import Callable, Union, Iterator
 import numpy as np
 from .utility import to_device
@@ -22,6 +22,10 @@ class ActivationFunction:
                 kwargs["dim"] = 0
         elif func == 'softmin':
             func = Softmin
+            if "dim" not in kwargs:
+                kwargs["dim"] = 0
+        elif func == "log_softmax":
+            func = LogSoftmax
             if "dim" not in kwargs:
                 kwargs["dim"] = 0
         elif func == 'sigmoid':
@@ -128,6 +132,11 @@ class RateNet(Module):
             clear_frontend_caches()
             raise e
 
+        # make sure the state vector is the first argument in args and keys
+        start = keys.index("y")
+        args = args[start:]
+        keys = keys[start:]
+
         # get parameter and variable indices
         param_map = cls._get_param_indices(template, keys[1:])
         param_map = _remove_node_from_dict_keys(param_map)
@@ -198,7 +207,7 @@ class RateNet(Module):
                 raise ValueError("If synaptic weights are passed (`weights`), please provide the names of the source "
                                  "and target variable that should be connected via `weights`.")
             edge_attr = kwargs.pop("edge_attr", None)
-            template.add_edges_from_matrix(source_var, target_var, nodes=list(nodes.keys()), weight=weights,
+            template.add_edges_from_matrix(source_var, target_var, source_nodes=list(nodes.keys()), weight=weights,
                                            edge_attr=edge_attr)
 
         # add variable updates
@@ -209,7 +218,7 @@ class RateNet(Module):
         func, args, keys, state_var_indices = template.get_run_func('rnn_layer', dt, backend='torch', clear=False,
                                                                     inplace_vectorfield=False, **kwargs)
 
-        return func, args[1:], keys[1:], template, state_var_indices
+        return func, args, keys, template, state_var_indices
 
     @staticmethod
     def _get_var_indices(template: CircuitTemplate, variables: dict):

@@ -25,18 +25,19 @@ import numpy as np
 from rectipy import Network, random_connectivity
 
 # network parameters
-N = 800
+N = 500
 p = 0.1
-node = "neuron_model_templates.spiking_neurons.qif.qif_sfa"
+node = "neuron_model_templates.spiking_neurons.lif.lif"
 
 # generate RNN connectivity
 J = random_connectivity(N, N, p, normalize=True)
 
 # initialize network
-net = Network(dt=1e-3)
-net.add_diffeq_node("rnn", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                    spike_var="spike", spike_def="v", op="qif_sfa_op",
-                    node_vars={"k": 8.0, "tau": 2.0, "eta": -1.0}, v_reset=-1e2, v_peak=1e2, clear=True)
+net = Network(dt=1e-2)
+net.add_diffeq_node("rnn", node, weights=J, source_var="s", target_var="s_in", input_var="s_ext", output_var="s",
+                    spike_var="spike", spike_def="v", op="lif_op",
+                    node_vars={"k": 100.0, "tau": 5.0, "eta": -0.5, "tau_s": 10.0},
+                    v_reset=-1e2, v_peak=1e2, clear=True, train_params=["weights"])
 
 # %%
 # In that example, we use the function :code:`random_connectivity` to generate the random coupling matrix for our RNN
@@ -60,7 +61,7 @@ m = 3
 p_in = 0.2
 
 # generate input weights
-W_in = input_connections(N, m, p_in, variance=5.0, zero_mean=True)
+W_in = input_connections(N, m, p_in, variance=1.0, zero_mean=True)
 
 # add input layer
 net.add_func_node("inp", m, activation_function="identity")
@@ -99,10 +100,10 @@ net.add_edge("rnn", "out", train="gd")
 # signal, by generating spike trains via `Poisson processes <https://en.wikipedia.org/wiki/Poisson_point_process>`_
 # with input rate parameters.
 
-train_steps = 1000000
-test_steps = 100000
+train_steps = 500000
+test_steps = 50000
 steps = train_steps + test_steps
-trial_steps = 10000
+trial_steps = 5000
 channels = list(np.arange(0, m, dtype=np.int32))
 on_rate = 1.0
 off_rate = 0.1
@@ -160,8 +161,8 @@ plt.show()
 # To this end, we will use the `Network.train` method:
 
 net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], axis=1), optimizer="adam",
-             loss="nll", lr=1e-3, update_steps=100000, record_output=False, record_loss=False,
-             sampling_steps=100000, optimizer_kwargs={"betas": (0.9, 0.999)}, verbose=True)
+             loss="nll", lr=1e-2, update_steps=50000, record_output=False, record_loss=False,
+             sampling_steps=50000, optimizer_kwargs={"betas": (0.9, 0.999)}, verbose=True)
 
 # %%
 # In this call to :code:`Network.fit_bptt`, we chose to perform parameter optimization via backpropagation through time
@@ -181,8 +182,9 @@ net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], 
 # To test whether the training was successful, we can use the :code:`Network.test` method to examine how well the model
 # can distinguish between different input combinations using a test data set:
 
-obs, loss = net.test(inputs=inp[train_steps:], targets=targets[train_steps:], loss="mse", verbose=False,
-                     record_output=True, record_loss=False, sampling_steps=1, record_vars=[("rnn", "s", False)])
+obs, loss = net.test(inputs=inp[train_steps:], targets=np.argmax(targets[train_steps:], axis=1), loss="nll",
+                     verbose=False, record_output=True, record_loss=False, sampling_steps=1,
+                     record_vars=[("rnn", "s", False)])
 
 print(f"Total loss on test data set: {loss}")
 

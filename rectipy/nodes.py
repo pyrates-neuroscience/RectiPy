@@ -222,7 +222,7 @@ class RateNet(Module):
 
     @staticmethod
     def _get_var_indices(template: CircuitTemplate, variables: dict):
-        var_dict = {key: f"all/{val}" for key, val in variables.items()}
+        var_dict = {key: f"all/{val}" if "all/" not in val else val for key, val in variables.items()}
         var_indices, _ = template.get_variable_positions(var_dict)
         results = {}
         for var in list(var_indices.keys()):

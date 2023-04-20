@@ -60,7 +60,7 @@ def test_3_1_diffeq_nodes():
     node_temp = NodeTemplate.from_yaml(node)
     nodes = {f"p{i}": node_temp for i in range(weights.shape[0])}
     circ_temp = CircuitTemplate("tanh_net", nodes=nodes)
-    circ_temp.add_edges_from_matrix(source_var=s_var, target_var=t_var, weight=weights, nodes=list(nodes.keys()))
+    circ_temp.add_edges_from_matrix(source_var=s_var, target_var=t_var, weight=weights, source_nodes=list(nodes.keys()))
 
     # different network initializations with a single RNN layer
     net1, net2, net3, net4, net5, net6 = Network(dt), Network(dt), Network(dt), Network(dt), Network(dt), Network(dt)

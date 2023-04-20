@@ -7,9 +7,16 @@ Changelog
 0.10.0
 ------
 
-- added new module for optimization functionalities
-- changed the structure of the `Network.train` method. It is now a high-level method that is used to choose a particular training method
-- recursive least-squares was added as a new training method next to gradient descent
+- Changed user interface: `rectipy.Network` is now initialized as an empty graph. Nodes and edges can be added to it afternwards.
+- Added new modules: `rectipy.nodes` and `rectipy.edges` provide different classes for nodes and edges that can be added to `rectipy.Network` instances
+- Altered training functionalities: `rectipy.Network` now features two methods for parameter optimization: `Network.fit_ridge` for Ridge regression-based training of a set of readout weights, and `Network.fit_bptt` for gradient descent based on backpropagation through time.
+- Implemented truncated backpropagation through time
+- Implemented gradient surrogates for spiking neural networks
+- New functionalities of the `rectipy.Observer` module: All recorded outputs can now be returned either as a list of `torch.Tensor` objects, as numpy arrays, or as `pandas.DataFrame` objects.
+- Added convenience functions on `rectipy.Network` for adding and getting nodes, edges and network variables.
+- Improved integration of `rectipy.Network` with pytorch parameter optimization methods by adding high-level methods for (i) detaching all state-variables from the current graph for gradient computation, and (ii) resetting the state of the entire network.
+- Updated unit tests and documentation to work with the above described changes
+- Updated PyRates interface to work with recent changes to the `pyrates.CircuitTemplate.add_edges_from_matrix` method
 
 0.9
 ---

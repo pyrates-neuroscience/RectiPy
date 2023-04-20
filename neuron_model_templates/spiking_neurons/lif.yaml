@@ -13,13 +13,14 @@ lif_op:
     replace:
       k*r_in: k*s_in
     add:
-      - "s' = -s/tau_s + spike"
+      - "s' = -s/tau_s + spike + s_ext"
   variables:
     s: output(0.0)
     v: variable(0.0)
     tau_s: 0.5
     spike: input(0.0)
     s_in: input(0.0)
+    s_ext: input(0.0)
 
 # node templates
 ################

@@ -60,7 +60,7 @@ net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_
 # Below, we show how to access a couple of relevant attributes of the network. For a full documentation of the
 # different attributes of `rectipy.network.Network` and `rectipy.rnn_layer.RNNLayer` instances, see our `API <https://rectipy.readthedocs.io/en/latest/rectipy.html>`_.
 
-print(f"Number of neurons in network: {net.n}")
+print(f"Number of neurons in network: {net.n_out}")
 print(f"RNN layer: {net.rnn_layer}")
 print(f"State variables of the neurons in the RNN layer: {net.rnn_layer.variable_names}")
 print(f"RNN layer parameters: {net.rnn_layer.parameter_names}")
@@ -154,7 +154,7 @@ net.add_input_layer(m, weights=np.random.randn(m, N))
 # It is also possible to add output layers to the network using a similar syntax:
 
 k = 2
-net.add_output_layer(k, weights=np.random.randn(N, k), activation_function="sigmoid")
+net.add_edge(k, weights=np.random.randn(N, k), activation_function="sigmoid")
 
 # %%
 # The keyword argument :code:`activation_function` is the only argument that differs from the input layer initialization.

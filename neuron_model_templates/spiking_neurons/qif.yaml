@@ -15,7 +15,7 @@ qif_op:
     v: variable(-2.0)
     tau: 1.0
     k: 1.0
-    tau_s: 0.5
+    tau_s: 1.0
     eta: -5.0
     I_ext: input(0.0)
     spike: input(0.0)

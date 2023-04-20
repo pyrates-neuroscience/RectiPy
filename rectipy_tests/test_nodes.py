@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.rnn_layer import RNNLayer, SRNNLayer
+from rectipy.nodes import RateNet, SpikeNet
 import torch
 import pytest
 import numpy as np
@@ -37,7 +37,7 @@ def rate(t, y, I_ext, weights, tau):
 #######
 
 
-def test_3_1_rnn_init():
+def test_2_1_ratenet_init():
     """Tests initialization options of the rnn layer.
     """
 
@@ -50,22 +50,22 @@ def test_3_1_rnn_init():
     args = (torch.zeros((n,)), torch.zeros((n,)), torch.tensor(weights), 1.0)
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
-                              source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, verbose=False)
-    rnn3 = SRNNLayer.from_yaml("neuron_model_templates.spiking_neurons.qif.qif", weights=weights,
-                               source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
-                               output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
-                               spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
-    rnn4 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
-                              source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, train_params=["weights"], verbose=False)
+    rnn1 = RateNet(func, args, {"out": [0, n]}, {"in": 0})
+    rnn2 = RateNet.from_pyrates("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
+                                source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
+                                output_var="tanh_op/r", clear=True, verbose=False)
+    rnn3 = SpikeNet.from_pyrates("neuron_model_templates.spiking_neurons.qif.qif", weights=weights,
+                                 source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
+                                 output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
+                                 spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
+    rnn4 = RateNet.from_pyrates("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
+                                source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
+                                output_var="tanh_op/r", clear=True, train_params=["weights"], verbose=False)
 
     # these tests should pass
-    assert isinstance(rnn1, RNNLayer)
-    assert isinstance(rnn2, RNNLayer)
-    assert isinstance(rnn3, SRNNLayer)
+    assert isinstance(rnn1, RateNet)
+    assert isinstance(rnn2, RateNet)
+    assert isinstance(rnn3, SpikeNet)
     assert len(rnn2.y) == n
     assert len(rnn3.y) == 2*n
     assert len(list(rnn4.parameters())) - len(list(rnn2.parameters())) == 1
@@ -78,7 +78,7 @@ def test_3_1_rnn_init():
         _ = rnn2['li_op/u']
 
 
-def test_3_2_detach():
+def test_2_2_detach():
     """Tests the detach function of the RNN layer.
     """
 
@@ -86,25 +86,23 @@ def test_3_2_detach():
     func = rate
     n = 10
     weights = np.random.randn(n, n)
-    args = (torch.zeros((n,), requires_grad=True), torch.zeros((n,), requires_grad=True),
-            torch.tensor(weights, requires_grad=True), 1.0)
+    args = (torch.zeros((n,), requires_grad=False), torch.zeros((n,), requires_grad=False),
+            torch.tensor(weights, requires_grad=False), 1.0)
     args2 = tuple([a.clone() if type(a) is torch.Tensor else a for a in args])
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
-    rnn2 = RNNLayer(func, args2,{"out": [0, n]}, {"in": 0})
+    rnn1 = RateNet(func, args, {"out": [0, n]}, {"in": 0, "weights": 1}, train_params=["weights"])
+    rnn2 = RateNet(func, args2, {"out": [0, n]}, {"in": 0, "weights": 1}, train_params=["weights"])
     rnn2.detach()
 
     # these tests should pass
     assert rnn1.y.requires_grad
     assert not rnn2.y.requires_grad
-    for arg1, arg2 in zip(rnn1._args, rnn2._args):
-        if type(arg1) is torch.Tensor:
-            assert arg1.requires_grad
-            assert not arg2.requires_grad
+    assert rnn1["weights"].requires_grad
+    assert not rnn2["weights"].requires_grad
 
 
-def test_3_3_forward():
+def test_2_3_forward():
     """Tests forward function of the RNN layer.
     """
 
@@ -116,17 +114,16 @@ def test_3_3_forward():
     weights = np.random.randn(n, n)
     dtype = torch.float64
     args = (torch.zeros((n,), dtype=dtype), torch.zeros((n,), dtype=dtype), torch.tensor(weights, dtype=dtype), 1.0)
-    inp_idx = 1
     inp = torch.randn(n, dtype=dtype)
 
     # create different instances of RNNLayer
-    rnn1 = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
-    rnn2 = RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
-                              source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                              output_var="tanh_op/r", clear=True, verbose=False)
-    rnn3 = RNNLayer(func, args + (1.0, ), {"out": [0, n]}, {"in": 0})
-    rnn4 = RNNLayer(func, args, {"out": [0, n]}, {"in": 2})
-    rnn5 = RNNLayer(func, args, {"out": [0, 3]}, {"in": 0})
+    rnn1 = RateNet(func, args, {"out": [0, n]}, {"in": 0})
+    rnn2 = RateNet.from_pyrates("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
+                                source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
+                                output_var="tanh_op/r", clear=True, verbose=False)
+    rnn3 = RateNet(func, args + (1.0,), {"out": [0, n]}, {"in": 0})
+    rnn4 = RateNet(func, args, {"out": [0, n]}, {"in": 2})
+    rnn5 = RateNet(func, args, {"out": [0, 3]}, {"in": 0})
 
     # detach the rnns
     for rnn in [rnn1, rnn2, rnn3, rnn4, rnn5]:
@@ -136,14 +133,14 @@ def test_3_3_forward():
     steps = 10
     out1 = [rnn1.forward(inp).numpy() for _ in range(steps)]
     out2 = [rnn2.forward(inp).numpy() for _ in range(steps)]
-    out4 = rnn4.forward(inp).numpy()
+    out4 = [rnn4.forward(inp).numpy() for _ in range(steps)]
     out5 = rnn5.forward(inp).numpy()
 
     # these tests should pass
     assert out1[0].shape[0] == n
     for o1, o2 in zip(out1, out2):
         assert np.mean(np.abs(o1-o2)) == pytest.approx(0, rel=accuracy, abs=accuracy)
-    assert np.mean(np.abs(out4 - out1[0])) > 0
+    assert np.mean(np.abs(out4[-1] - out1[-1])) > 0
     assert out5.shape[0] == 3
 
     # these tests should fail
@@ -153,7 +150,7 @@ def test_3_3_forward():
         rnn1.forward(np.random.randn(n))
 
 
-def test_3_4_reset():
+def test_2_4_reset():
     """Tests reset method of RNNLayer
     """
 
@@ -167,7 +164,7 @@ def test_3_4_reset():
     x = torch.randn(n)
 
     # create instance of RNNLayer
-    rnn = RNNLayer(func, args, {"out": [0, n]}, {"in": 0})
+    rnn = RateNet(func, args, {"out": [0, n]}, {"in": 0})
 
     # collect states
     r1 = rnn.forward(x)

@@ -1,90 +1,166 @@
 import torch
-from torch.nn import Sequential
-from typing import Union, Iterator, Callable, Tuple
-from .rnn_layer import RNNLayer, SRNNLayer
-from .input_layer import InputLayer
-from .output_layer import OutputLayer
+from torch.nn import Module
+from typing import Union, Iterator, Callable, Tuple, Optional
+from .nodes import RateNet, SpikeNet, ActivationFunction
+from .edges import RLS, Linear
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
 import numpy as np
 from time import perf_counter
+from networkx import DiGraph
+from multipledispatch import dispatch
 
 
-class Network:
+class Network(Module):
     """Main user interface for initializing, training, testing, and running networks consisting of rnn, input, and
     output layers.
     """
 
-    def __init__(self, n: int, rnn_layer: Union[RNNLayer, SRNNLayer], var_map: dict = None, device: str = "cpu"):
+    def __init__(self, dt: float, device: str = "cpu"):
         """Instantiates network with a single RNN layer.
 
         Parameters
         ----------
-        n
-            Number of neurons in the RNN layer.
-        rnn_layer
-            `RNNLayer` instance.
-        var_map
-            Optional dictionary, where keys are variable names as supplied by the user, and values are variable names
-            that contain the operator name as well.
+        dt
+            Time-step used for all simulations and rnn layers.
         device
             Device on which to deploy the `Network` instance.
 
         """
 
-        self.n = n
-        self.rnn_layer = rnn_layer
-        self.input_layer = None
-        self.output_layer = None
-        self._var_map = var_map if var_map else {}
-        self._model = None
+        super().__init__()
+
+        self.graph = DiGraph()
         self.device = device
-        
-    def __getitem__(self, item: Union[int, str]):
-        try:
-            return self.rnn_layer[item]
-        except KeyError:
-            try:
-                return self.rnn_layer[self._var_map[item]]
-            except KeyError:
-                if self._model is None:
-                    self.compile()
-                return self._model[item]
+        self.dt = dt
+        self._record = {}
+        self._var_map = {}
+        self._in_node = None
+        self._out_node = None
+        self._bwd_graph = {}
+
+    @dispatch(str)
+    def __getitem__(self, item: str):
+        return self.graph.nodes[item]
+
+    @dispatch(tuple)
+    def __getitem__(self, nodes: tuple):
+        return self.graph[nodes[0]][nodes[1]]
+
+    def __iter__(self):
+        for n in self.graph.nodes:
+            yield self[n]
 
     def __len__(self):
-        try:
-            return len(self._model)
-        except TypeError:
-            self.compile()
-            return len(self._model)
+        return len(self.graph.nodes)
 
-    @classmethod
-    def from_yaml(cls, node: Union[str, NodeTemplate], weights: np.ndarray, source_var: str, target_var: str,
-                  input_var: str, output_var: str, spike_var: str = None, spike_def: str = None, op: str = None,
-                  train_params: list = None, device: str = "cpu", **kwargs):
-        """Creates a `Network` instance from a YAML template that defines a single RNN node and additional information
-        about which nodes in the network should be connected to each other.
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    @property
+    def n_out(self):
+        """Current output dimensionality.
+        """
+        try:
+            return self[self._out_node]["n_out"]
+        except AttributeError:
+            return 0
+
+    @property
+    def n_in(self):
+        """Current input dimensionality of the network.
+        """
+        try:
+            return self[self._in_node]["n_in"]
+        except AttributeError:
+            return 0
+
+    @property
+    def nodes(self):
+        """Network nodes"""
+        return self.graph.nodes
+
+    @property
+    def state(self):
+        return {n: self.get_node(n).y for n in self.nodes}
+
+    def get_node(self, n: str) -> Union[ActivationFunction, RateNet]:
+        """Returns node instance from the network.
+        """
+        return self[n]["node"]
+
+    def get_edge(self, source: str, target: str):
+        """Returns edge instance from the network.
+        """
+        return self[source, target]["edge"]
+
+    def get_var(self, node: str, var: str):
+        """Returns variable from network node.
+        """
+        try:
+            return self.get_node(node)[self._relabel_var(var)]
+        except KeyError:
+            return self[node][var]
+
+    def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None) -> None:
+        """Add node to the network, based on an instance from `rectipy.nodes`.
 
         Parameters
         ----------
+        label
+            Name of the node in the network graph.
+        node
+            Instance of a class from `rectipy.nodes`.
+        node_type
+            Type of the node. Should be set to "diff_eq" for nodes that contain differential equations.
+        op
+            For differential equation-based nodes, an operator name can be passed that is used to identify variables on
+            the node.
+
+        Returns
+        -------
+        None
+
+        """
+
+        # remember operator mapping for each RNN node parameter and state variable
+        if op:
+            for p in node.parameter_names:
+                add_op_name(op, p, self._var_map)
+            for v in node.variable_names:
+                add_op_name(op, v, self._var_map)
+
+        # add node to graph
+        self.graph.add_node(label, node=node, node_type=node_type, n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0)
+
+    def add_diffeq_node(self, label: str, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str,
+                        output_var: str, weights: np.ndarray = None, source_var: str = None, target_var: str = None,
+                        spike_var: str = None, spike_def: str = None, op: str = None, train_params: list = None,
+                        **kwargs) -> RateNet:
+        """Adds a differential equation-based RNN node to the `Network` instance.
+
+        Parameters
+        ----------
+        label
+            The label of the node in the network graph.
         node
             Path to the YAML template or an instance of a `pyrates.NodeTemplate`.
+        input_var
+            Name of the parameter in the node equations that input should be projected to.
+        output_var
+            Name of the variable in the node equations that should be used as output of the RNN node.
         weights
-            Determines the number of nodes in the network as well as their connectivity. Given an `N x N` weights
-            matrix, `N` nodes will be added to the RNN layer, each of which is governed by the equations defined in the
-            `NodeTemplate` (see argument `node`). Nodes will be labeled `n0` to `n<N>` and every non-zero entry in the
-            matrix will be realized by an edge between the corresponding nodes in the network.
+            Determines the number of neurons in the network as well as their connectivity. Given an `N x N` weights
+            matrix, `N` neurons will be added to the RNN node, each of which is governed by the equations defined in the
+            `NodeTemplate` (see argument `node`). Neurons will be labeled `n0` to `n<N>` and every non-zero entry in the
+            matrix will be realized by an edge between the corresponding neurons in the network.
         source_var
             Source variable that will be used for each connection in the network.
         target_var
             Target variable that will be used for each connection in the network.
-        input_var
-            Name of the parameter in the node equations that input from input layers should be projected to.
-        output_var
-            Name of the variable in the node equations that should be used as output of the RNN layer.
         spike_var
-            Name of the parameter in the node equations that recurrent input from the RNN layer should be projected to.
+            Name of the parameter in the node equations that recurrent input from the RNN should be projected to.
         spike_def
             Name of the variable in the node equations that should be used to determine spikes in the network.
         op
@@ -92,26 +168,24 @@ class Network:
             the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
         train_params
             Names of all RNN parameters that should be made available for optimization.
-        device
-            Device on which to deploy the `Network` instance.
         kwargs
             Additional keyword arguments provided to the `RNNLayer` (or `SRNNLayer` in case of spiking neurons).
 
         Returns
         -------
-        Network
-            Instance of `Network`.
+        RateNet
+            Instance of the RNN node that was added to the network.
         """
 
         # add operator key to variable names
         var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'in_net': spike_var,
                     'out': output_var, 'spike': spike_def}
-        new_vars = {}
+        self._var_map = {}
         if op is not None:
             for key, var in var_dict.copy().items():
-                var_dict[key] = add_op_name(op, var, new_vars)
+                var_dict[key] = add_op_name(op, var, self._var_map)
             if train_params:
-                train_params = [add_op_name(op, p, new_vars) for p in train_params]
+                train_params = [add_op_name(op, p, self._var_map) for p in train_params]
             if "node_vars" in kwargs:
                 for key in kwargs["node_vars"].copy():
                     if "/" not in key:
@@ -120,222 +194,253 @@ class Network:
 
         # initialize rnn layer
         if spike_var is None and spike_def is None:
-            rnn_layer = RNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
-                                           var_dict['out'], train_params=train_params, device=device, **kwargs)
+            node = RateNet.from_pyrates(node, var_dict['in_ext'], var_dict['out'], weights=weights,
+                                        source_var=var_dict['svar'], target_var=var_dict['tvar'],
+                                        train_params=train_params, device=self.device, dt=self.dt, **kwargs)
         elif spike_var is None or spike_def is None:
             raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
                              'name of the variable that spikes should be stored in (`spike_var`) as well as the '
                              'name of the variable that is used to define spikes (`spike_def`).')
         else:
-            rnn_layer = SRNNLayer.from_yaml(node, weights, var_dict['svar'], var_dict['tvar'], var_dict['in_ext'],
-                                            var_dict['out'], spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                            train_params=train_params, device=device, **kwargs)
+            node = SpikeNet.from_pyrates(node, var_dict['in_ext'], var_dict['out'], weights=weights,
+                                         source_var=var_dict['svar'], target_var=var_dict['tvar'],
+                                         spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
+                                         train_params=train_params, device=self.device, dt=self.dt, **kwargs)
 
-        # remember operator mapping for each RNN layer parameter and state variable
-        for p in rnn_layer.parameter_names:
-            add_op_name(op, p, new_vars)
-        for v in rnn_layer.variable_names:
-            add_op_name(op, v, new_vars)
+        # add node to the network graph
+        self.add_node(label, node=node, node_type="diff_eq", op=op)
 
-        # initialize model
-        return cls(weights.shape[0], rnn_layer, var_map=new_vars, device=device)
+        return node
 
-    @classmethod
-    def from_template(cls, template: CircuitTemplate, input_var: str, output_var: str, spike_var: str = None,
-                      spike_def: str = None, op: str = None, train_params: list = None, device: str = "cpu", **kwargs):
-        """Creates a `Network` instance from a YAML template that defines a single RNN node and additional information
-        about which nodes in the network should be connected to each other.
+    def add_func_node(self, label: str, n: int, activation_function: str, **kwargs) -> ActivationFunction:
+        """Add an activation function as a node to the network (no intrinsic dynamics, just an input-output mapping).
 
         Parameters
         ----------
-        template
-            Instance of a `pyrates.CircuitTemplate`. Will not be altered any further.
-        input_var
-            Name of the parameter in the node equations that input from input layers should be projected to.
-        output_var
-            Name of the variable in the node equations that should be used as output of the RNN layer.
-        spike_var
-            Name of the parameter in the node equations that recurrent input from the RNN layer should be projected to.
-        spike_def
-            Name of the variable in the node equations that should be used to determine spikes in the network.
-        op
-            Name of the operator in which all the above variables can be found. If not provided, it is assumed that
-            the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
-        train_params
-            Names of all RNN parameters that should be made available for optimization.
-        device
-            Device on which to deploy the `Network` instance.
-        kwargs
-            Additional keyword arguments provided to the `RNNLayer` (or `SRNNLayer` in case of spiking neurons).
-
-        Returns
-        -------
-        Network
-            Instance of `Network`.
-        """
-
-        # add operator key to variable names
-        var_dict = {'in_ext': input_var, 'in_net': spike_var, 'out': output_var, 'spike': spike_def}
-        new_vars = {}
-        if op is not None:
-            for key, var in var_dict.copy().items():
-                var_dict[key] = add_op_name(op, var, new_vars)
-            if train_params:
-                train_params = [add_op_name(op, p, new_vars) for p in train_params]
-
-        # initialize rnn layer
-        if spike_var is None and spike_def is None:
-            rnn_layer = RNNLayer.from_template(template, var_dict['in_ext'], var_dict['out'], train_params=train_params,
-                                               **kwargs)
-        elif spike_var is None or spike_def is None:
-            raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
-                             'name of the variable that spikes should be stored in (`spike_var`) as well as the '
-                             'name of the variable that is used to define spikes (`spike_def`).')
-        else:
-            rnn_layer = SRNNLayer.from_template(template, var_dict['in_ext'], var_dict['out'],
-                                                spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                                train_params=train_params, **kwargs)
-
-        # remember operator mapping for each RNN layer parameter and state variable
-        for p in rnn_layer.parameter_names:
-            add_op_name(op, p, new_vars)
-        for v in rnn_layer.variable_names:
-            add_op_name(op, v, new_vars)
-
-        # initialize model
-        return cls(len(template.nodes), rnn_layer, var_map=new_vars, device=device)
-
-    @property
-    def model(self) -> Sequential:
-        """After `Network.compile` was called, this property yields the `torch.nn.Sequential` instance that contains all
-        the network layers.
-        """
-        return self._model
-
-    def add_input_layer(self, m: int, weights: np.ndarray = None, trainable: bool = False,
-                        dtype: torch.dtype = torch.float64) -> InputLayer:
-        """Add an input layer to the network. Networks can have either 1 or 0 input layers.
-
-        Parameters
-        ----------
-        m
-            Number of input dimensions.
-        weights
-            `n x m` weight matrix that realizes the linear projection of the inputs in each input dimension to the
-            neurons in the RNN layer.
-        trainable
-            If true, the input weights will be made available for optimization.
-        dtype
-            Data type of the input weights.
-
-        Returns
-        -------
-        InputLayer
-            Instance of the `InputLayer`.
-        """
-
-        # initialize input layer
-        input_layer = InputLayer(self.n, m, weights, trainable=trainable, dtype=dtype)
-
-        # add layer to model
-        self.input_layer = self._move_to_device(input_layer)
-
-        # return layer
-        return self.input_layer
-
-    def add_output_layer(self, k: int, weights: np.ndarray = None, trainable: bool = False,
-                         activation_function: str = None, dtype: torch.dtype = torch.float64, **kwargs) -> OutputLayer:
-        """Add an output layer to the network. Networks can have either 1 or 0 output layers.
-
-        Parameters
-        ----------
-        k
-            Number of output dimensions.
-        weights
-            `k x n` weight matrix that realizes the linear projection of the output of the RNN layer units to the output
-            layer units.
-        trainable
-            If true, the output weights will be made available for optimization.
+        label
+            The label of the node in the network graph.
+        n
+            Dimensionality of the node.
         activation_function
-            Optional activation function applied to the output of the output layer. Valid options are:
+            Activation function applied to the output of the last layer. Valid options are:
             - 'tanh' for `torch.nn.Tanh()`
             - 'sigmoid' for `torch.nn.Sigmoid()`
             - 'softmax' for `torch.nn.Softmax(dim=0)`
-            - `softmin` for `torch.nn.Softmin(dim=0)`
-            - None (default) for `torch.nn.Identity()`
-        dtype
-            Data type of the input weights.
-        kwargs
-            Additional keyword arguments to be passed on to `rectipy.output_layer.OutputLayer`.
+            - 'softmin' for `torch.nn.Softmin(dim=0)`
+            - 'log_softmax' for `torch.nn.LogSoftmax(dim=0)`
 
         Returns
         -------
-        OutputLayer
-            Instance of the `OutputLayer`.
+        ActivationFunc
+            The node of the network graph.
+        """
+
+        # create node instance
+        node = ActivationFunction(n, activation_function, **kwargs)
+
+        # add node to the network graph
+        self.add_node(label, node=node, node_type="diff_eq")
+
+        return node
+
+    def add_edge(self, source: str, target: str, weights: Union[torch.Tensor, np.ndarray] = None,
+                 train: Optional[str] = None, dtype: torch.dtype = torch.float64, **kwargs) -> Linear:
+        """Add a feed-forward layer to the network.
+
+        Parameters
+        ----------
+        source
+            Label of the source node.
+        target
+            Label of the target node.
+        weights
+            `k x n` weight matrix that realizes the linear projection of the `n` source outputs to
+            the `k` target inputs.
+        train
+            Can be used to make the edge weights trainable. The following options are available:
+            - `None` for a static edge
+            - 'gd' for training of the edge weights via standard pytorch gradient descent
+            - 'rls' for recursive least squares training of the edge weights
+        dtype
+            Data type of the edge weights.
+        kwargs
+            Additional keyword arguments to be passed to the edge class initialization method.
+
+        Returns
+        -------
+        Linear
+            Instance of the edge class.
         """
 
         # initialize output layer
-        output_layer = OutputLayer(self.n, k, weights, trainable=trainable, activation_function=activation_function,
-                                   dtype=dtype, **kwargs)
+        kwargs.update({"n_in": self[source]["n_out"], "n_out": self[target]["n_in"],
+                       "weights": weights, "dtype": dtype})
+        trainable = True
+        if train is None:
+            trainable = False
+            edge = Linear(**kwargs, detach=True)
+        elif train == "gd":
+            edge = Linear(**kwargs, detach=False)
+        elif train == "rls":
+            edge = RLS(**kwargs)
+        else:
+            raise ValueError("Invalid option for keyword argument `train`. Please see the docstring of "
+                             "`Network.add_output_layer` for valid options.")
 
-        # add layer to model
-        self.output_layer = self._move_to_device(output_layer)
+        # add node to graph
+        self.graph.add_edge(source, target, edge=edge.to(self.device), trainable=trainable, n_in=edge.n_in,
+                            n_out=edge.n_out)
+        return edge
 
-        # return layer
-        return self.output_layer
-
-    def remove_input_layer(self) -> None:
-        """Removes the current input layer.
+    def pop_node(self, node: str) -> Union[ActivationFunction, RateNet]:
+        """Removes (and returns) a node from the network.
         """
-        self.input_layer = None
+        node_data = self.get_node(node)
+        self.graph.remove_node(node)
+        return node_data
 
-    def remove_output_layer(self) -> None:
-        """Removes the current output layer.
+    def pop_edge(self, source: str, target: str) -> Linear:
+        """Removes (and returns) an edge from the network.
         """
-        self.output_layer = None
+        edge = self.get_edge(source, target)
+        self.graph.remove_edge(source, target)
+        return edge
 
-    def train(self, inputs: np.ndarray, targets: np.ndarray, method: str = "gradient_descent",
-              sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
-        """High-level training method for model parameter optimization. Allows to choose between the specific
-        optimization methods.
+    def compile(self):
+
+        # make sure that only a single input node exists
+        in_nodes = [n for n in self.graph.nodes if self.graph.in_degree(n) == 0]
+        if len(in_nodes) != 1:
+            raise ValueError(f"Unable to identify the input node of the Network. "
+                             f"Nodes that have no input edges: {in_nodes}."
+                             f"Make sure that exactly one such node without input edges exists in the network.")
+        self._in_node = in_nodes.pop()
+
+        # make sure that only a single output node exists
+        out_nodes = [n for n in self.graph.nodes if self.graph.out_degree(n) == 0]
+        if len(out_nodes) != 1:
+            raise ValueError(f"Unable to identify the output node of the Network. "
+                             f"Nodes that have no outgoing edges: {out_nodes}."
+                             f"Make sure that exactly one such node without outgoing edges exists in the network.")
+        self._out_node = out_nodes.pop()
+
+        # create backward pass through network starting from output node
+        self._bwd_graph = self._compile_bwd_graph(self._out_node, dict())
+
+    def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        """Forward method as implemented for any `torch.Module`.
+
+        Parameters
+        ----------
+        x
+            Input tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
+        """
+        node = self._out_node
+        x = self._backward(x, node)
+        self._reset_node_eval()
+        return x
+
+    def parameters(self, recurse: bool = True) -> Iterator:
+        """Yields the trainable parameters of the network model.
+
+        Parameters
+        ----------
+        recurse
+            If true, yields parameters of all submodules.
+
+        Yields
+        ------
+        Iterator
+            Trainable model parameters.
+        """
+        g = self.graph
+        for node in g:
+            for p in self.get_node(node).parameters(recurse=recurse):
+                yield p
+        for s, t in g.edges:
+            for p in g[s][t]["edge"].parameters():
+                yield p
+
+    def detach(self) -> None:
+        """Goes through all DE-based nodes and detaches their state variables from the current graph for gradient
+        calculation."""
+        for node in self.nodes:
+            n = self.get_node(node)
+            if hasattr(n, "y"):
+                n.detach(requires_grad=True, detach_params=False)
+
+    def reset(self, state: dict = None):
+        for node in self.nodes:
+            n = self.get_node(node)
+            if hasattr(n, "y"):
+                if state and n in state:
+                    n.reset(state[n])
+                else:
+                    n.reset()
+
+    def run(self, inputs: Union[np.ndarray, torch.Tensor], sampling_steps: int = 1, verbose: bool = True,
+            enable_grad: bool = True, **kwargs) -> Observer:
+        """Perform numerical integration of the input-driven network equations.
 
         Parameters
         ----------
         inputs
-            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
-            input dimensions of the network.
-        targets
-            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
-            network.
-        method
-            Name of the optimization method. Possible choices are:
-            - 'gradient_descent' for gradient-descent-based optimization via `torch.autograd`
-            - 'rls' for recursive least-squares
+            `T x m` array of inputs fed to the model, where`T` is the number of integration steps and `m` is the number
+             of input dimensions of the network.
         sampling_steps
-            Number of training steps at which to record observables.
+            Number of integration steps at which to record observables.
         verbose
-            If true, the training progress will be displayed.
+            If true, the progress of the integration will be displayed.
+        enable_grad
+            If true, the simulation will be performed with gradient calculation.
         kwargs
-            Additional keyword arguments passed to the chosen training method.
+            Additional keyword arguments used for the observation.
 
         Returns
         -------
         Observer
-            Instance of the `observer`.
+            Instance of the `Observer`.
         """
 
-        if method == "gradient_descent":
-            return self.train_gd(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
-        if method == "rls":
-            return self.train_rls(inputs, targets, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
-        else:
-            raise ValueError("Invalid training method. Please see the docstring of `Network.train` for valid choices "
-                             "of the keyword argument 'method'.")
+        # preparations on input arguments
+        steps = inputs.shape[0]
+        if type(inputs) is np.ndarray:
+            inputs = torch.tensor(inputs, device=self.device)
+        truncate_steps = kwargs.pop("truncate_steps", steps)
 
-    def train_gd(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
-                 loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 100,
-                 optimizer_steps: int = 1, verbose: bool = True, **kwargs) -> Observer:
-        """Optimize model parameters such that the model output matches the provided targets as close as possible.
+        # compile network
+        self.compile()
+
+        # initialize observer
+        if "obs" in kwargs:
+            obs = kwargs.pop("obs")
+        else:
+            obs = Observer(dt=self.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)
+        rec_vars = [v for v in obs.recorded_state_variables]
+
+        # forward input through static network
+        grad = torch.enable_grad if enable_grad else torch.no_grad
+        with grad():
+            for step in range(steps):
+                output = self.forward(inputs[step, :])
+                if step % sampling_steps == 0:
+                    if verbose:
+                        print(f'Progress: {step}/{steps} integration steps finished.')
+                    obs.record(step, output, 0.0, [self.get_var(v[0], v[1]) for v in rec_vars])
+                if truncate_steps < steps and step % truncate_steps == truncate_steps-1:
+                    self.detach()
+
+        return obs
+
+    def fit_bptt(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
+                 loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 1,
+                 update_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
+        """Optimize model parameters via backpropagation through time.
 
         Parameters
         ----------
@@ -370,7 +475,7 @@ class Network:
             Learning rate.
         sampling_steps
             Number of training steps at which to record observables.
-        optimizer_steps
+        update_steps
             Number of training steps after which to perform an update of the trainable parameters based on the
             accumulated gradients.
         verbose
@@ -388,20 +493,20 @@ class Network:
         ##############
 
         # transform inputs into tensors
-        inp_tensor = torch.tensor(inputs)
-        target_tensor = torch.tensor(targets)
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
         if inp_tensor.shape[0] != target_tensor.shape[0]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension.')
 
-        # set up model
-        model = self.compile() if self._model is None else self._model
+        # compile network
+        self.compile()
 
         # initialize loss function
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
 
         # initialize optimizer
-        optimizer = self._get_optimizer(optimizer, lr, model.parameters(), optimizer_kwargs=optimizer_kwargs)
+        optimizer = self._get_optimizer(optimizer, lr, self.parameters(), optimizer_kwargs=optimizer_kwargs)
 
         # retrieve keyword arguments for optimization
         step_kwargs = retrieve_from_dict(['closure'], kwargs)
@@ -409,25 +514,102 @@ class Network:
 
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
-        obs = Observer(dt=self.rnn_layer.dt, **obs_kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+        obs = Observer(dt=self.dt, **obs_kwargs)
 
         # optimization
         ##############
 
         t0 = perf_counter()
         if len(inp_tensor.shape) > 2:
-            self._train_epochs(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs,
-                               step_kwargs, sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
+            obs = self._bptt_epochs(inp_tensor, target_tensor, loss=loss, optimizer=optimizer,
+                                    obs=obs, error_kwargs=error_kwargs, step_kwargs=step_kwargs,
+                                    sampling_steps=sampling_steps, verbose=verbose)
         else:
-            self._train(inp_tensor, target_tensor, model, loss, optimizer, obs, rec_vars, error_kwargs, step_kwargs,
-                        sampling_steps=sampling_steps, optim_steps=optimizer_steps, verbose=verbose)
+            obs = self._bptt(inp_tensor, target_tensor, loss, optimizer, obs, error_kwargs, step_kwargs,
+                             sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
         return obs
 
-    def train_rls(self, inputs: np.ndarray, targets: np.ndarray, forget_rate: float = 1.0,  sampling_steps: int = 100,
-                  verbose: bool = True, **kwargs) -> Observer:
+    def fit_ridge(self, inputs: np.ndarray, targets: np.ndarray, sampling_steps: int = 100, alpha: float = 1e-4,
+                  verbose: bool = True, add_readout_node: bool = True, **kwargs) -> Observer:
+        """Train readout weights on top of the input-driven model dynamics via ridge regression.
+
+        Parameters
+        ----------
+        inputs
+            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
+            input dimensions of the network.
+        targets
+            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
+            network.
+        sampling_steps
+            Number of training steps at which to record observables.
+        alpha
+            Ridge regression regularization constant.
+        verbose
+            If true, the training progress will be displayed.
+        add_readout_node
+            If true, a readout node is added to the network, which will be connected to the current output node of the
+            network via the trained readout weights.
+        kwargs
+            Additional keyword arguments used for the observation and network simulations.
+
+        Returns
+        -------
+        Observer
+            Instance of the `observer`.
+        """
+
+        # preparations
+        ##############
+
+        # transform inputs into tensors
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
+        if inp_tensor.shape[0] != target_tensor.shape[0]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension.')
+
+        # compile network
+        self.compile()
+
+        # collect network states
+        ########################
+
+        t0 = perf_counter()
+        obs = self.run(inputs=inputs, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        t1 = perf_counter()
+        print(f'Finished network state collection after {t1-t0} s.')
+
+        # train read-out classifier
+        ###########################
+
+        t0 = perf_counter()
+
+        # ridge regression formula
+        X = torch.stack(obs["out"])
+        X_t = X.T
+        w_out = torch.inverse(X_t @ X + alpha*torch.eye(X.shape[1])) @ X_t @ targets
+        y = X @ w_out
+
+        # progress report
+        t1 = perf_counter()
+        print(f'Finished fitting of read-out weights after {t1 - t0} s.')
+
+        # add read-out layer
+        ####################
+
+        if add_readout_node:
+            self.add_func_node("readout", node_type="function", n=w_out.shape[1], activation_function="identity")
+            self.add_edge(self._out_node, target="readout", weights=w_out.T)
+
+        obs.save("y", y)
+        obs.save("w_out", w_out)
+        return obs
+
+    def fit_rls(self, inputs: np.ndarray, targets: np.ndarray, feedback_weights: np.ndarray = None,
+                update_steps: int = 1, sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         r"""Finds model parameters $w$ such that $||Xw - y||_2$ is minimized, where $X$ contains the neural activity and
         $y$ contains the targets.
 
@@ -439,8 +621,11 @@ class Network:
         targets
             `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
             network.
-        forget_rate
-            Parameter lambda of the recursive least-squares algorithm.
+        feedback_weights
+            `m x k` array of synaptic weights. If provided, a feedback connections is established with these weights,
+            that projects the network output back to the RNN layer.
+        update_steps
+            Each `update_steps` an update of the trainable parameters will be performed.
         sampling_steps
             Number of training steps at which to record observables.
         verbose
@@ -454,10 +639,88 @@ class Network:
             Instance of the `observer`.
         """
 
-        pass
+        # TODO: implement RLS training
 
-    def test(self, inputs: np.ndarray, targets: np.ndarray, loss: str = 'mse', loss_kwargs: dict = None,
-             sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
+        # preparations
+        ##############
+
+        # test correct dimensionality of inputs
+        if inputs.shape[0] != targets.shape[0]:
+            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                             '`targets` agree in the first dimension.')
+
+        # transform inputs into tensors
+        inp_tensor = torch.tensor(inputs, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device)
+
+        # set up model
+        if self.output_layer is None:
+            self.add_edge(n=targets.shape[1], train="rls", **kwargs)
+        if self._model is None:
+            self.compile()
+
+        # initialize observer
+        obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
+        obs = Observer(dt=self.dt, **obs_kwargs)
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
+
+        # optimization
+        ##############
+
+        t0 = perf_counter()
+        if feedback_weights is None:
+            obs = self._train_nofb(inp_tensor, target_tensor, obs, rec_vars, update_steps=update_steps,
+                                   sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        else:
+            W_fb = torch.tensor(feedback_weights, device=self.device)
+            obs = self._train_fb(inp_tensor, target_tensor, W_fb, obs, rec_vars, update_steps=update_steps,
+                                 sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        t1 = perf_counter()
+        print(f'Finished optimization after {t1 - t0} s.')
+        return obs
+
+    def fit_eprop(self, inputs: np.ndarray, targets: np.ndarray, feedback_weights: np.ndarray = None,
+                  epsilon: float = 0.99, delta: float = 0.9, update_steps: int = 1, sampling_steps: int = 100,
+                  verbose: bool = True, **kwargs) -> Observer:
+        r"""Reinforcement learning algorithm that implements slow adjustment of the feedback weights to the RNN layer
+        based on a running average of the residuals.
+
+        Parameters
+        ----------
+        inputs
+            `T x m` array of inputs fed to the model, where`T` is the number of training steps and `m` is the number of
+            input dimensions of the network.
+        targets
+            `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
+            network.
+        feedback_weights
+            `m x k` array of synaptic weights. If provided, a feedback connections is established with these weights,
+            that projects the network output back to the RNN layer.
+        epsilon
+            Scalar in (0, 1] that controls how quickly the loss used for reinforcement learning can change.
+        delta
+            Scalar in (0, 1] that controls how quickly the feedback weights can change.
+        update_steps
+            Each `update_steps` an update of the trainable parameters will be performed.
+        sampling_steps
+            Number of training steps at which to record observables.
+        verbose
+            If true, the training progress will be displayed.
+        kwargs
+            Additional keyword arguments used for the optimization, loss calculation and observation.
+
+        Returns
+        -------
+        Observer
+            Instance of the `observer`.
+        """
+
+        # TODO: Implement e-prop as defined in Bellec et al. (2020) Nature Communications
+        # TODO: Make sure that this fitting method allows for reinforcement learning schemes
+        raise NotImplementedError("Method is currently not implemented")
+
+    def test(self, inputs: np.ndarray, targets: np.ndarray, loss: str = 'mse',
+             loss_kwargs: dict = None, sampling_steps: int = 100, verbose: bool = True, **kwargs) -> tuple:
         """Test the model performance on a set of inputs and target outputs, with frozen model parameters.
 
         Parameters
@@ -490,207 +753,72 @@ class Network:
         ##############
 
         # transform inputs into tensors
-        inp_tensor = torch.tensor(inputs)
-        target_tensor = torch.tensor(targets)
-
-        # set up model
-        model = self.compile() if self._model is None else self._model
+        target_tensor = torch.tensor(targets, device=self.device)
 
         # initialize loss function
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
 
-        # initialize observer
-        obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
-        obs = Observer(dt=self.rnn_layer.dt, **obs_kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
+        # simulate network dynamics
+        obs = self.run(inputs=inputs, sampling_steps=sampling_steps, verbose=verbose, **kwargs)
 
-        # test loop
-        ###########
+        # calculate loss
+        output = torch.stack(obs["out"])
+        loss_val = loss(output, target_tensor)
 
-        loss_total = 0.0
-        steps = inp_tensor.shape[0]
-        with torch.no_grad():
-            for step in range(steps):
+        return obs, loss_val.item()
 
-                # forward pass
-                prediction = model(inp_tensor[step, :])
+    def _compile_bwd_graph(self, n: str, graph: dict) -> dict:
+        sources = list(self.graph.predecessors(n))
+        if len(sources) > 0:
+            graph[n] = sources
+        for s in sources:
+            graph = self._compile_bwd_graph(s, graph)
+        return graph
 
-                # loss calculation
-                error = loss(prediction, target_tensor[step, :])
-                loss_total += error.item()
+    def _backward(self, x: Union[torch.Tensor, np.ndarray], n: str) -> torch.Tensor:
+        if n in self._bwd_graph:
+            inp = self._bwd_graph[n]
+            if len(inp) == 1:
+                x = self._edge_forward(x, inp[0], n)
+            else:
+                x = torch.sum(torch.tensor([self._edge_forward(x, i, n) for i in inp]), dim=0)
+        node = self[n]
+        if node["eval"]:
+            node["out"] = node["node"].forward(x)
+            node["eval"] = False
+        return node["out"]
 
-                # results storage
-                if step % sampling_steps == 0:
-                    if verbose:
-                        print(f'Progress: {step}/{steps} test steps finished.')
-                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
+    def _edge_forward(self, x: Union[torch.Tensor, np.ndarray], u: str, v: str) -> torch.Tensor:
+        x = self._backward(x, u)
+        return self.get_edge(u, v).forward(x)
 
-        return obs, loss_total
+    def _reset_node_eval(self):
+        for n in self:
+            n["eval"] = True
 
-    def run(self, inputs: np.ndarray, sampling_steps: int = 1, verbose: bool = True, **kwargs
-            ) -> Observer:
-        """Perform numerical integration of the input-driven network equations.
+    def _bptt_epochs(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
+                     obs: Observer, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 1,
+                     verbose: bool = False, **kwargs) -> Observer:
 
-        Parameters
-        ----------
-        inputs
-            `T x m` array of inputs fed to the model, where`T` is the number of integration steps and `m` is the number
-             of input dimensions of the network.
-        sampling_steps
-            Number of integration steps at which to record observables.
-        verbose
-            If true, the progress of the integration will be displayed.
-        kwargs
-            Additional keyword arguments used for the observation.
-
-        Returns
-        -------
-        Observer
-            Instance of the `Observer`.
-        """
-
-        # transform input into tensor
-        steps = inputs.shape[0]
-        inp_tensor = torch.tensor(inputs, device=self.device)
-
-        # initialize model from layers
-        model = self.compile() if self._model is None else self._model
-
-        # initialize observer
-        obs = Observer(dt=self.rnn_layer.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)
-        rec_vars = [self._relabel_var(v) for v in obs.recorded_rnn_variables]
-
-        # forward input through static network
-        with torch.no_grad():
-            for step in range(steps):
-                output = model(inp_tensor[step, :])
-                if step % sampling_steps == 0:
-                    if verbose:
-                        print(f'Progress: {step}/{steps} integration steps finished.')
-                    obs.record(step, output, 0.0, [self[v] for v in rec_vars])
-
-        return obs
-
-    def compile(self) -> Sequential:
-        """Connects the `InputLayer`, `RNNLayer` and `OutputLayer` of this model via a `torch.nn.Sequential` instance.
-        Input and output layers are optional.
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-        Sequential
-            Instance of the `torch.nn.Sequential` containing the network layers.
-        """
-        in_layer = self._get_layer(self.input_layer)
-        out_layer = self._get_layer(self.output_layer)
-        rnn_layer = self._get_layer(self.rnn_layer)
-        layers = in_layer + rnn_layer + out_layer
-        model = Sequential(*layers)
-        self._model = model.to(self.device)
-        if not list(self.rnn_layer.parameters()):
-            self.rnn_layer.detach()
-        else:
-            for p in self.parameters():
-                p.requires_grad = True
-        return self._model
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward method as implemented for any `torch.Module`.
-
-        Parameters
-        ----------
-        x
-            Input tensor.
-
-        Returns
-        -------
-        torch.Tensor
-            Output tensor.
-        """
-        return self._model(x)
-
-    def parameters(self, recurse: bool = True) -> Iterator:
-        """Yields the trainable parameters of the network model.
-
-        Parameters
-        ----------
-        recurse
-            If true, yields parameters of all submodules.
-
-        Yields
-        ------
-        Iterator
-            Trainable model parameters.
-        """
-        if self._model is None:
-            self.compile()
-        for layer in self._model:
-            for p in layer.parameters(recurse):
-                yield p
-
-    def _train(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
-               optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict, step_kwargs: dict,
-               sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
-
-        if inp.shape[0] != target.shape[0]:
-            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
-                             '`targets` agree in the first dimension.')
-
-        steps = inp.shape[0]
-        for step in range(steps):
-
-            # forward pass
-            prediction = model(inp[step, :])
-
-            # loss calculation
-            error = loss(prediction, target[step, :])
-
-            # error backpropagation
-            error.backward(**error_kwargs)
-            if step % optim_steps == 0:
-                optimizer.step(**step_kwargs)
-                optimizer.zero_grad()
-
-            # results storage
-            if step % sampling_steps == 0:
-                if verbose:
-                    print(f'Progress: {step}/{steps} training steps finished.')
-                obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
-
-    def _train_epochs(self, inp: torch.Tensor, target: torch.Tensor, model: Sequential, loss: Callable,
-                      optimizer: torch.optim.Optimizer, obs: Observer, rec_vars: list, error_kwargs: dict,
-                      step_kwargs: dict, sampling_steps: int = 100, optim_steps: int = 1, verbose: bool = False):
-
-        if inp.shape[0] != target.shape[0] or inp.shape[1] != target.shape[1]:
+        if inp.shape[1] != target.shape[1]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
 
+        y0 = self.state
         epochs = inp.shape[0]
-        steps = inp.shape[1]
+        epoch_losses = []
         for epoch in range(epochs):
 
-            # go through steps of the epoch
-            epoch_loss = 0
-            for step in range(steps):
+            # simulate network dynamics
+            obs = self.run(inp[epoch], verbose=False, sampling_steps=sampling_steps, enable_grad=True, **kwargs)
 
-                # forward pass
-                prediction = model(inp[epoch, step, :])
+            # perform gradient descent step
+            epoch_loss = self._bptt_step(torch.stack(obs["out"]), target[epoch], optimizer=optimizer, loss=loss,
+                                         error_kwargs=error_kwargs, step_kwargs=step_kwargs)
+            epoch_losses.append(epoch_loss)
 
-                # loss calculation
-                error = loss(prediction, target[epoch, step, :])
-                epoch_loss += error.item()
-
-                # error backpropagation
-                error.backward(**error_kwargs)
-                if step % optim_steps == 0:
-                    optimizer.step(**step_kwargs)
-                    optimizer.zero_grad()
-
-                # results storage
-                if step % sampling_steps == 0:
-                    obs.record(step, prediction, error.item(), [self[v] for v in rec_vars])
+            # reset network
+            self.reset(y0)
 
             # display progress
             if verbose:
@@ -698,19 +826,57 @@ class Network:
                 print(f'Epoch loss: {epoch_loss}.')
                 print('')
 
+        obs.save("epoch_loss", epoch_losses)
+        obs.save("epochs", np.arange(epochs))
+        return obs
+
+    def _bptt(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
+              obs: Observer, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 100,
+              optim_steps: int = 1000, verbose: bool = False) -> Observer:
+
+        # preparations
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
+        steps = inp.shape[0]
+        error = 0.0
+        predictions = []
+        old_step = 0
+
+        # optimization loop
+        for step in range(steps):
+
+            # forward pass
+            predictions.append(self.forward(inp[step, :]))
+
+            # gradient descent optimization step
+            if step % optim_steps == optim_steps-1:
+                error = self._bptt_step(torch.stack(predictions), target[old_step:step+1], optimizer=optimizer, loss=loss,
+                                        error_kwargs=error_kwargs, step_kwargs=step_kwargs)
+                self.detach()
+                old_step = step+1
+                predictions.clear()
+
+            # results storage
+            if step % sampling_steps == 0:
+                if verbose:
+                    print(f'Progress: {step}/{steps} training steps finished. Current loss: {error}.')
+                obs.record(step, predictions[-1], error, [self[v] for v in rec_vars])
+
+        return obs
+
+    @staticmethod
+    def _bptt_step(predictions: torch.Tensor, targets: torch.Tensor, optimizer: torch.optim.Optimizer,
+                   loss: Callable, error_kwargs: dict, step_kwargs: dict) -> float:
+        error = loss(predictions, targets)
+        optimizer.zero_grad()
+        error.backward(**error_kwargs)
+        optimizer.step(**step_kwargs)
+        return error.item()
+
     def _relabel_var(self, var: str) -> str:
         try:
             return self._var_map[var]
         except KeyError:
             return var
-
-    def _move_to_device(self, model: Sequential):
-        try:
-            for layer in model:
-                layer.to(self.device)
-        except TypeError:
-            pass
-        return model.to(self.device)
 
     @staticmethod
     def _get_optimizer(optimizer: str, lr: float, model_params: Iterator, optimizer_kwargs: dict = None
@@ -729,6 +895,8 @@ class Network:
             opt = torch.optim.Adagrad
         elif optimizer == 'adadelta':
             opt = torch.optim.Adadelta
+        elif optimizer == 'adamax':
+            opt = torch.optim.Adamax
         elif optimizer == 'rmsprop':
             opt = torch.optim.RMSprop
         elif optimizer == 'rprop':
@@ -767,8 +935,105 @@ class Network:
                              'method for valid options.')
         return l(**loss_kwargs)
 
-    @staticmethod
-    def _get_layer(layer) -> tuple:
-        if layer is None:
-            return tuple()
-        return tuple([layer])
+
+class FeedbackNetwork(Network):
+
+    def __init__(self, dt: float, device: str = "cpu"):
+
+        super().__init__(dt, device)
+        self._graph_ffwd = None
+        self._graph_fb = None
+
+    def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        for i, layer in enumerate(self.graph):
+            if i in self.feedback:
+                feedback_layer, out_idx = self.feedback[i]
+                x += feedback_layer(self._outputs[out_idx])
+            x = layer(x)
+            if i in self._outputs:
+                self._outputs[i] = x
+        return x
+
+    def compile(self):
+
+        # sort edges into feedback and feedforward edges
+        fb_edges = []
+        ffwd_edges = []
+        for edge in self.graph.edges:
+            fb = self.graph[edge[0]][edge[1]].get("feedback")
+            if fb:
+                fb_edges.append(edge)
+            else:
+                ffwd_edges.append(edge)
+
+        # create subgraph views that contains only feedback vs. feedforward edges
+        self._graph_fb = self.graph.edge_subgraph(fb_edges)
+        self._graph_ffwd = self.graph.edge_subgraph(ffwd_edges)
+
+        # make sure that only a single input node exists
+        in_nodes = [n for n in self._graph_ffwd.nodes if self._graph_ffwd.in_degree(n) == 0]
+        if len(in_nodes) != 1:
+            raise ValueError(f"Unable to identify the input node of the Network. "
+                             f"Nodes that have no input edges: {in_nodes}."
+                             f"Make sure that exactly one such node without input edges exists in the network.")
+        self._in_node = in_nodes.pop()
+
+        # make sure that only a single output node exists
+        out_nodes = [n for n in self._graph_ffwd.nodes if self._graph_ffwd.out_degree(n) == 0]
+        if len(out_nodes) != 1:
+            raise ValueError(f"Unable to identify the output node of the Network. "
+                             f"Nodes that have no outgoing edges: {out_nodes}."
+                             f"Make sure that exactly one such node without outgoing edges exists in the network.")
+        self._out_node = out_nodes.pop()
+
+    def add_edge(self, source: str, target: str, weights: np.ndarray = None,
+                 train: Optional[str] = None, feedback: bool = False, dtype: torch.dtype = torch.float64, **kwargs
+                 ) -> Linear:
+        """Add a feed-forward layer to the network.
+
+        Parameters
+        ----------
+        source
+            Label of the source node.
+        target
+            Label of the target node.
+        weights
+            `k x n` weight matrix that realizes the linear projection of the `n` source outputs to
+            the `k` target inputs.
+        train
+            Can be used to make the edge weights trainable. The following options are available:
+            - `None` for a static edge
+            - 'gd' for training of the edge weights via standard pytorch gradient descent
+            - 'rls' for recursive least squares training of the edge weights
+        feedback
+            If true, this edge is treated as a feedback edge, meaning that it does not affect the feedforward path that
+            connects the network input to its output.
+        dtype
+            Data type of the edge weights.
+        kwargs
+            Additional keyword arguments to be passed to the edge class initialization method.
+
+        Returns
+        -------
+        Linear
+            Instance of the edge class.
+        """
+
+        # initialize output layer
+        kwargs.update({"n_in": self[source]["n_out"], "n_out": self[target]["n_in"],
+                       "weights": weights, "dtype": dtype})
+        trainable = True
+        if train is None:
+            trainable = False
+            edge = Linear(**kwargs, detach=True)
+        elif train == "gd":
+            edge = Linear(**kwargs, detach=False)
+        elif train == "rls":
+            edge = RLS(**kwargs)
+        else:
+            raise ValueError("Invalid option for keyword argument `train`. Please see the docstring of "
+                             "`Network.add_output_layer` for valid options.")
+
+        # add node to graph
+        self.graph.add_edge(source, target, edge=edge, trainable=trainable, feedback=feedback)
+        return edge

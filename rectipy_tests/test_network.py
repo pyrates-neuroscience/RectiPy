@@ -2,13 +2,13 @@
 """
 
 # imports
-from rectipy.rnn_layer import RNNLayer, SRNNLayer
-from rectipy.input_layer import LinearStatic, Linear
+from rectipy.nodes import RateNet, SpikeNet, ActivationFunction
+from rectipy.edges import Linear, RLS
 from rectipy import Network
 import torch
 import pytest
 import numpy as np
-from pyrates import clear_frontend_caches
+from pyrates import clear_frontend_caches, CircuitTemplate, NodeTemplate
 
 
 # meta infos
@@ -35,14 +35,15 @@ accuracy = 1e-3
 #######
 
 
-def test_4_1_init():
-    """Tests initialization of Network class.
+def test_3_1_diffeq_nodes():
+    """Tests Network whether differential-equation-based nodes behave as expected.
     """
 
     clear_frontend_caches()
 
     # parameters
     n = 10
+    dt = 1e-2
     weights = np.random.randn(n, n)
     node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
     node_spiking = "neuron_model_templates.spiking_neurons.qif.qif"
@@ -51,107 +52,91 @@ def test_4_1_init():
     s_var = "tanh_op/r"
     t_var = "li_op/r_in"
 
-    # rnn layer initialization
-    rnn = RNNLayer.from_yaml(node, weights=weights, source_var=s_var, target_var=t_var, input_var=in_var,
-                             output_var=out_var, clear=True, verbose=False)
+    # RNN layer initialization
+    rnn = RateNet.from_pyrates(node, weights=weights, source_var=s_var, target_var=t_var, input_var=in_var,
+                               output_var=out_var, clear=True, verbose=False, dt=dt)
 
-    # different network initializations
-    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False)
-    net2 = Network(n, rnn)
-    net3 = Network.from_yaml(node, weights=weights, input_var="I_ext", output_var=out_var, source_var=s_var,
-                             target_var="r_in", clear=True, verbose=False, op="li_op")
-    net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, train_params=["weights"])
-    net5 = Network.from_yaml(node_spiking, weights=weights, input_var="I_ext", output_var="s", source_var="s",
-                             target_var="s_in", op="qif_op", spike_var="spike", spike_def="v",  clear=True,
-                             verbose=False, dtype=torch.float32)
+    # RNN template initialization
+    node_temp = NodeTemplate.from_yaml(node)
+    nodes = {f"p{i}": node_temp for i in range(weights.shape[0])}
+    circ_temp = CircuitTemplate("tanh_net", nodes=nodes)
+    circ_temp.add_edges_from_matrix(source_var=s_var, target_var=t_var, weight=weights, source_nodes=list(nodes.keys()))
+
+    # different network initializations with a single RNN layer
+    net1, net2, net3, net4, net5, net6 = Network(dt), Network(dt), Network(dt), Network(dt), Network(dt), Network(dt)
+    net1.add_diffeq_node("n1", node=node, input_var=in_var, output_var=out_var, weights=weights, source_var=s_var,
+                         target_var=t_var, clear=True, verbose=False)
+    net2.add_diffeq_node("n1", node=circ_temp, input_var=in_var, output_var=out_var, source_var=s_var, target_var=t_var,
+                         clear=True, verbose=False)
+    net3.add_diffeq_node("n1", node, weights=weights, input_var="I_ext", output_var=out_var, source_var=s_var,
+                         target_var="r_in", clear=True, verbose=False, op="li_op")
+    net4.add_diffeq_node("n1", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                         target_var=t_var, clear=True, verbose=False, train_params=["weights"])
+    net5.add_diffeq_node("n1", node_spiking, weights=weights, input_var="I_ext", output_var="s", source_var="s",
+                         target_var="s_in", op="qif_op", spike_var="spike", spike_def="v", clear=True, verbose=False,
+                         dtype=torch.float32)
+    net6.add_node("n1", rnn, node_type="diff_eq")
 
     # these tests should pass
-    assert isinstance(net1.rnn_layer, RNNLayer)
-    assert isinstance(net5.rnn_layer, SRNNLayer)
-    assert isinstance(net1[0], RNNLayer)
-    assert net2.rnn_layer == rnn
-    assert len(net3._var_map) - len(net1._var_map) == 2
-    assert len(net1.rnn_layer.train_params) == 0
-    assert len(net4.rnn_layer.train_params) == 1
-    assert net4["v"].shape[0] == n
-    assert net1.rnn_layer.y.dtype == torch.float64
-    assert net5.rnn_layer.y.dtype == torch.float32
+    assert isinstance(net1.get_node("n1"), RateNet)
+    assert isinstance(net2.get_node("n1"), RateNet)
+    assert isinstance(net6.get_node("n1"), RateNet)
+    assert isinstance(net5.get_node("n1"), SpikeNet)
+    assert isinstance(net1["n1"]["node"], RateNet)
+    assert net6.get_node("n1") == rnn
+    assert len(net3._var_map) - len(net1._var_map) > 0
+    assert len(net1.get_node("n1").train_params) == 0
+    assert len(net4.get_node("n1").train_params) == 1
+    assert net3.get_var("n1", var="v").shape[0] == n
+    assert net1.get_node("n1").y.dtype == torch.float64
+    assert net5.get_node("n1").y.dtype == torch.float32
 
     # these tests should fail
     with pytest.raises(FileNotFoundError):
-        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.freaky_integrator.tanh", weights=weights,
-                           source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
-                           verbose=False)
+        RateNet.from_pyrates("neuron_model_templates.rate_neurons.freaky_integrator.tanh", weights=weights,
+                             source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
+                             verbose=False)
     with pytest.raises(AttributeError):
-        RNNLayer.from_yaml("neuron_model_templates.rate_neurons.leaky_integrator.tan", weights=weights,
-                           source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
-                           verbose=False)
+        RateNet.from_pyrates("neuron_model_templates.rate_neurons.leaky_integrator.tan", weights=weights,
+                             source_var=s_var, target_var=t_var, input_var=in_var, output_var=out_var, clear=True,
+                             verbose=False)
     with pytest.raises(KeyError):
-        RNNLayer.from_yaml(node, weights=weights, source_var="x", target_var=t_var, input_var=in_var,
-                           output_var=out_var, clear=True, verbose=False)
+        RateNet.from_pyrates(node, weights=weights, source_var="x", target_var=t_var, input_var=in_var,
+                             output_var=out_var, clear=True, verbose=False)
 
 
-def test_4_2_input_layer():
-    """Tests input layer properties of Network class.
+def test_3_2_function_nodes():
+    """Tests whether activation function nodes behave as expected in Network.
     """
-
-    # rnn parameters
-    n = 10
-    weights = np.random.randn(n, n)
-    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
-    in_var = "li_op/I_ext"
-    out_var = "tanh_op/r"
-    s_var = "tanh_op/r"
-    t_var = "li_op/r_in"
 
     # input parameters
     m = 3
     x = torch.randn(m, dtype=torch.float32)
+    y = torch.randn(m, dtype=torch.float64)
 
-    # different network initializations
-    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float32)
-    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float32)
-    net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float32)
-    net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net4", dtype=torch.float32)
-
-    # add input layer
-    net1.add_input_layer(m, trainable=False, dtype=torch.float32)
-    net2.add_input_layer(m, weights=np.random.randn(m, n), trainable=False, dtype=torch.float32)
-    net3.add_input_layer(m, trainable=True, dtype=torch.float32)
-    net4.add_input_layer(m, dtype=torch.float64)
-    net1.compile()
-    net2.compile()
-    net3.compile()
-    net4.compile()
+    # initialize network with different activation function nodes
+    net = Network(dt=1e-3)
+    net.add_func_node("softmax", m, activation_function="softmax")
+    net.add_func_node("sigmoid", m, activation_function="sigmoid")
+    net.add_func_node("identity", m, activation_function="softmax")
 
     # these tests should pass
-    assert isinstance(net1.input_layer, LinearStatic)
-    assert isinstance(net3.input_layer, Linear)
-    assert isinstance(net1[0], LinearStatic)
-    assert tuple(net2.input_layer.weights.shape) == (n, m)
-    assert net4.input_layer.weights.dtype == torch.float64
-    assert tuple(net1.forward(x).shape) == (n,)
-    net1.remove_input_layer()
-    net1.compile()
-    assert isinstance(net1[0], RNNLayer)
+    assert isinstance(net.get_node("softmax"), ActivationFunction)
+    assert isinstance(net.get_node("sigmoid"), ActivationFunction)
+    assert isinstance(net["softmax"]["node"], ActivationFunction)
+    assert net.get_node("sigmoid").forward(x).shape[0] == m
+    assert net.get_node("softmax").forward(x).dtype == torch.float32
+    assert net.get_node("softmax").forward(y).dtype == torch.float64
+    net.pop_node("softmax")
+    assert len(net.nodes) == 2
 
     # these tests should fail
-    with pytest.raises(RuntimeError):
-        net4.forward(x)
-        net1.forward(x)
-        net2.forward(torch.randn(m+1))
     with pytest.raises(ValueError):
-        net1.add_input_layer(m, weights=np.random.randn(m+1, n+1))
+        net.add_func_node("wrong", m, activation_function="kickmoid")
 
 
-def test_4_3_output_layer():
-    """Tests output layer properties of Network class.
+def test_3_3_edges():
+    """Tests whetheredges added to Netowkr instances behave as expected.
     """
 
     # rnn parameters
@@ -163,57 +148,47 @@ def test_4_3_output_layer():
     s_var = "tanh_op/r"
     t_var = "li_op/r_in"
 
-    # output parameters
+    # read parameters
     k = 3
     out_weights = np.random.randn(n, k)
 
     # input definition
     x = torch.randn(n, dtype=torch.float64)
 
-    # different network initializations
-    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
-    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64)
-    net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float64)
-    net4 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net4", dtype=torch.float64)
-    net5 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net5", dtype=torch.float32)
+    # set up network with a single RNN layer and multiple, independent readout layers
+    net = Network(dt=1e-3)
+    net.add_diffeq_node("rnn", node=node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                        target_var=t_var, clear=True, verbose=False, dtype=torch.float64)
+    net.add_func_node("readout_1", k, activation_function="identity")
+    net.add_func_node("readout_2", k, activation_function="sigmoid")
+    net.add_func_node("readout_3", k, activation_function="identity")
+    net.add_func_node("readout_4", k, activation_function="identity")
 
-    # add output layers
-    net1.add_output_layer(k, weights=out_weights)
-    net2.add_output_layer(k, weights=out_weights, activation_function='sigmoid')
-    net3.add_output_layer(k, trainable=True)
-    net4.add_output_layer(k, trainable=True, bias=False)
-    net5.add_output_layer(k, dtype=torch.float32)
-    net1.compile()
-    net2.compile()
-    net5.compile()
+    # add edges between RNN and readout layers
+    net.add_edge("rnn", "readout_1", weights=out_weights, dtype=torch.float64)
+    net.add_edge("rnn", "readout_2", dtype=torch.float32)
+    net.add_edge("rnn", "readout_3", weights=out_weights, dtype=torch.float64, train="gd")
+    net.add_edge("rnn", "readout_4", weights=out_weights, dtype=torch.float64, train="rls")
 
     # these tests should pass
-    assert isinstance(net1.output_layer, torch.nn.Sequential)
-    assert isinstance(net1.output_layer[0], LinearStatic)
-    assert isinstance(net3.output_layer[0], Linear)
-    assert isinstance(net1.output_layer[1], torch.nn.Identity)
-    assert isinstance(net2.output_layer[1], torch.nn.Sigmoid)
-    assert len(list(net1.parameters())) == 0
-    assert len(list(net3.parameters())) == 2
-    assert len(list(net4.parameters())) == 1
-    assert net5.output_layer[0].weights.dtype == torch.float32
-    assert tuple(net1.forward(x).shape) == (k,)
-    assert np.mean(np.abs(net1.forward(x).detach().numpy() - net2.forward(x).detach().numpy())) > 0.0
-    net1.remove_output_layer()
-    net1.compile()
-    assert tuple(net1.forward(x).shape) == (n,)
+    assert isinstance(net.get_edge("rnn", "readout_1"), Linear)
+    assert isinstance(net.get_edge("rnn", "readout_3"), Linear)
+    assert isinstance(net.get_edge("rnn", "readout_4"), RLS)
+    assert len(list(net.parameters(recurse=True))) == 1
+    assert net.get_edge("rnn", "readout_2").weights.dtype == torch.float32
+    assert net.get_edge("rnn", "readout_1").forward(x).shape[0] == k
 
     # these tests should fail
+    net.pop_edge("rnn", "readout_1")
+    with pytest.raises(ValueError):
+        net.add_edge("rnn", "readout_1", weights=torch.randn(n, k+1))
+    with pytest.raises(KeyError):
+        net.add_edge("rnn_1", "readout_1", weights=torch.randn(n, k + 1))
     with pytest.raises(RuntimeError):
-        net5.forward(x)
+        net.get_edge("rnn", "readout_2").forward(x)
 
 
-def test_4_4_compile():
+def test_3_4_compile():
     """Tests compile functionalities of Network class.
     """
 
@@ -227,38 +202,44 @@ def test_4_4_compile():
     t_var = "li_op/r_in"
 
     # output parameters
-    k = 3
+    k = 2
 
     # input parameters
     m = 3
     x = torch.randn(m, dtype=torch.float64)
 
     # network initialization
-    net = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                            target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+    net = Network(dt=1e-3)
+    net.add_diffeq_node('rnn', node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                        target_var=t_var, clear=True, verbose=False, dtype=torch.float64)
 
     # these tests should pass
     net.compile()
-    assert isinstance(net.model, torch.nn.Sequential)
-    assert len(net) == 1
-    net.add_input_layer(m, dtype=torch.float64)
+    assert len(net._bwd_graph) == 0
+    net.add_func_node("inp", m, activation_function="identity")
+    net.add_edge("inp", "rnn", dtype=torch.float64)
     net.compile()
-    assert len(net) == 2
+    assert len(net._bwd_graph) == 1
     y1 = net.forward(x)
-    net.add_output_layer(k, dtype=torch.float64)
+    net.add_func_node("out", k, activation_function="sigmoid")
+    net.add_edge("rnn", "out", dtype=torch.float64)
     net.compile()
     y2 = net.forward(x)
-    assert len(net) == 3
+    assert len(net._bwd_graph) == 2
     assert y2.shape[0] - y1.shape[0] == k-n
 
     # these tests should fail
-    net.remove_input_layer()
+    net.pop_node("inp")
     net.compile()
     with pytest.raises(RuntimeError):
         net.forward(x)
+    net.add_func_node("out2", k, activation_function="sigmoid")
+    net.add_edge("rnn", "out2")
+    with pytest.raises(ValueError):
+        net.compile()
 
 
-def test_4_5_parameters():
+def test_3_5_parameters():
     """Tests parameters method of Network class.
     """
 
@@ -274,19 +255,22 @@ def test_4_5_parameters():
     t_var = "li_op/r_in"
 
     # network initialization
-    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
-    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
-                             train_params=['weights', 'li_op/tau'])
+    net1, net2 = Network(dt=1e-3), Network(dt=1e-3)
+    net1.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                         target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+    net2.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                         target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
+                         train_params=['weights', 'li_op/tau'])
 
     # test number of parameters
     assert len(list(net1.parameters())) == 0
     assert len(list(net2.parameters())) == 2
 
     # add input layers
-    net1.add_input_layer(m, trainable=True)
-    net2.add_input_layer(m, trainable=False)
+    net1.add_func_node("inp", m, activation_function="identity")
+    net2.add_func_node("inp", m, activation_function="identity")
+    net1.add_edge("inp", "rnn", train="gd")
+    net2.add_edge("inp", "rnn", train=None)
     net1.compile()
     net2.compile()
 
@@ -295,21 +279,24 @@ def test_4_5_parameters():
     assert len(list(net2.parameters())) == 2
 
     # add output layers
-    net1.add_output_layer(k, trainable=True, bias=False)
-    net2.add_output_layer(k, trainable=True, bias=True)
+    net1.add_func_node("out", k, activation_function="identity")
+    net2.add_func_node("out", k, activation_function="identity")
+    net1.add_edge("rnn", "out", train="gd")
+    net2.add_edge("rnn", "out", train="rls")
     net1.compile()
     net2.compile()
 
     # test number of parameters
     assert len(list(net1.parameters())) == 2
-    assert len(list(net2.parameters())) == 4
+    assert len(list(net2.parameters())) == 2
 
 
-def test_4_6_simulation():
+def test_3_6_simulation():
     """Tests simulation functionalities of Network class.
     """
 
     # rnn parameters
+    dt = 1e-2
     n = 10
     steps = 100
     weights = np.random.randn(n, n)
@@ -321,35 +308,36 @@ def test_4_6_simulation():
     t_var = "li_op/r_in"
 
     # network initialization
-    net1 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
-    net2 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
-                             record_vars=['li_op/v'])
-    net3 = Network.from_yaml(node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                             target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float64,
-                             record_vars=['li_op/v']
-                             )
+    net1, net2, net3 = Network(dt=dt), Network(dt=dt), Network(dt=dt)
+    net1.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                         target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+    net2.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                         target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
+                         record_vars=['li_op/v'])
+    net3.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
+                         target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float64,
+                         record_vars=['li_op/v']
+                         )
     net3.compile()
 
     # run simulations
     res1 = net1.run(inputs=x, sampling_steps=2, verbose=False)
-    res2 = net2.run(inputs=x, record_output=False, record_vars=[('li_op/v', False)], verbose=False)
+    res2 = net2.run(inputs=x, record_output=False, record_vars=[('rnn', 'li_op/v', False)], verbose=False)
     res3, res4 = [], []
     for step in range(steps):
         out = net3.forward(x[step, :])
         if step % 2 == 0:
             res3.append(out.detach().numpy())
-        res4.append(net3['li_op/v'].detach().numpy())
+        res4.append(net3.get_var("rnn", var="li_op/v").detach().numpy())
 
     # these tests should pass
-    x, y = res1["out"].values.flatten(), np.asarray(res3).flatten()
+    x, y = res1.to_dataframe("out").values.flatten(), np.asarray(res3).flatten()
     assert np.mean(np.abs(x - y)) == pytest.approx(0, rel=accuracy, abs=accuracy)
-    x, y = res2["li_op/v"].values.flatten(), np.asarray(res4).flatten()
+    x, y = res2.to_dataframe(("rnn", "li_op/v")).values.flatten(), np.asarray(res4).flatten()
     assert np.mean(np.abs(x - y)) == pytest.approx(0, rel=accuracy, abs=accuracy)
 
 
-def test_4_7_optimization():
+def test_3_7_optimization():
     """Tests optimization functions of Network class.
     """
 

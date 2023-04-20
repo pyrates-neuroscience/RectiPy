@@ -2,13 +2,13 @@
 Model Training and Testing
 ==========================
 
-`RectiPy` provides methods for training and testing of RNNs via the `train` and `test` methods implemented on the
+`RectiPy` provides methods for training and testing of RNNs via the `fit_*` and `test` methods implemented on the
 `rectipy.Network` class. These methods provide a wrapper to standard `torch` training and testing procedures.
 Here, we will describe how you can control the behavior of these methods via various keyword arguments.
 
 As an example, we will use a classic `reservoir computing <http://www.scholarpedia.org/article/Echo_state_network>`_
 paradigm:
-- We will set up a RNN of :math:`N=500` randomly and sparsely coupled QIF neurons with spike-frequency adaptation
+- We will set up an RNN of :math:`N=500` randomly and sparsely coupled QIF neurons with spike-frequency adaptation
     (see `this use example <https://rectipy.readthedocs.io/en/latest/auto_models/qif.html>`_ for an introduction to this neuron model).
 - We will provide input to this RNN via an input layer of :math:`m = 3` linear neurons.
 - We will project the RNN output to a fully connected readout layer.
@@ -27,15 +27,17 @@ from rectipy import Network, random_connectivity
 # network parameters
 N = 500
 p = 0.1
-node = "neuron_model_templates.spiking_neurons.qif.qif_sfa"
+node = "neuron_model_templates.spiking_neurons.lif.lif"
 
 # generate RNN connectivity
 J = random_connectivity(N, N, p, normalize=True)
 
-# initialize rnn layer
-net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                        spike_var="spike", spike_def="v", op="qif_sfa_op",
-                        node_vars={"k": 8.0, "tau": 2.0, "eta": -1.0}, v_reset=-1e2, v_peak=1e2, clear=False)
+# initialize network
+net = Network(dt=1e-2)
+net.add_diffeq_node("rnn", node, weights=J, source_var="s", target_var="s_in", input_var="s_ext", output_var="s",
+                    spike_var="spike", spike_def="v", op="lif_op",
+                    node_vars={"k": 100.0, "tau": 5.0, "eta": -0.5, "tau_s": 10.0},
+                    v_reset=-1e2, v_peak=1e2, clear=True, train_params=["weights"])
 
 # %%
 # In that example, we use the function :code:`random_connectivity` to generate the random coupling matrix for our RNN
@@ -59,29 +61,32 @@ m = 3
 p_in = 0.2
 
 # generate input weights
-W_in = input_connections(N, m, p_in, variance=5.0)
+W_in = input_connections(N, m, p_in, variance=1.0, zero_mean=True)
 
 # add input layer
-net.add_input_layer(m, weights=W_in, trainable=False)
+net.add_func_node("inp", m, activation_function="identity")
+net.add_edge("inp", "rnn", weights=W_in, train=None)
 
 # %%
 # Here, we used the function :code:`rectipy.input_connections` to generate the coupling weights of the input layer.
 # Again, the first two arguments control the dimensionality of the returned matrix, and the third argument controls the
 # sparsity of the input weights. By default, the input weights are sampled from a standard Gaussian distribution,
 # and :code:`variance=5.0` ensures that the variance of the Gaussian is set to :math:`\sigma^2 = 5` in this example.
-# By toggling :code:`trainable`, it is possible to enable/disable optimization of the input weights during training.
+# By setting the keyword argument to :code:`train` to something else than `None`, it is possible to enable optimization
+# of the input weights during training.
 #
 # As a final step of the model initialization, lets add the readout layer:
 
 # readout layer parameters
 k = 3
-activation_function = "softmax"
+activation_function = "log_softmax"
 
 # add readout layer
-net.add_output_layer(k, trainable=True, activation_function=activation_function)
+net.add_func_node("out", k, activation_function=activation_function)
+net.add_edge("rnn", "out", train="gd")
 
 # %%
-# By declaring this layer as trainable, the weights of this layer are going to be optimized during training.
+# By setting `train="gd"`, the weights of this layer are going to be optimized via gradient descent.
 # We thus skipped on initializing the weights manually. Furthermore, we chose that the activation of the neurons in that
 # layer are determined by the `softmax function <https://en.wikipedia.org/wiki/Softmax_function>`_,
 # which is applied to the summed up synaptic inputs of each neuron in the layer.
@@ -95,10 +100,10 @@ net.add_output_layer(k, trainable=True, activation_function=activation_function)
 # signal, by generating spike trains via `Poisson processes <https://en.wikipedia.org/wiki/Poisson_point_process>`_
 # with input rate parameters.
 
-train_steps = 5000000
-test_steps = 200000
+train_steps = 500000
+test_steps = 50000
 steps = train_steps + test_steps
-trial_steps = 10000
+trial_steps = 5000
 channels = list(np.arange(0, m, dtype=np.int32))
 on_rate = 1.0
 off_rate = 0.1
@@ -122,10 +127,11 @@ while i*trial_steps < steps:
 
 import matplotlib.pyplot as plt
 
-plt.imshow(inp[:100000].T, aspect=4000.0, interpolation="none")
-plt.xlabel("training steps")
-plt.ylabel("input channel")
-plt.colorbar(label="# spikes", shrink=0.2)
+fig, ax = plt.subplots(figsize=(10, 4))
+im = ax.imshow(inp[train_steps:].T, aspect="auto", interpolation="none")
+ax.set_xlabel("training steps")
+ax.set_ylabel("input channel")
+plt.colorbar(im, ax=ax, label="# spikes", shrink=0.2)
 plt.show()
 
 # %%
@@ -141,9 +147,10 @@ for i in range(steps):
     elif active_channels[i, 1] * active_channels[i, 2] > 0:
         targets[i, 2] = 1.0
 
-plt.imshow(targets[:100000].T, aspect=4000.0, interpolation="none")
-plt.xlabel("training steps")
-plt.ylabel("output channel")
+fig, ax = plt.subplots(figsize=(10, 4))
+im = ax.imshow(targets[train_steps:].T, aspect="auto", interpolation="none")
+ax.set_xlabel("training steps")
+ax.set_ylabel("output channel")
 plt.show()
 
 # %%
@@ -153,19 +160,20 @@ plt.show()
 # Now, we have all pre-requisites to start our optimization procedure.
 # To this end, we will use the `Network.train` method:
 
-net.train_gd(inputs=inp[:train_steps], targets=targets[:train_steps], optimizer="rprop",
-             loss="mse", lr=1e-2, optimizer_steps=100000, record_output=False, record_loss=False,
-             sampling_steps=steps, optimizer_kwargs={"etas": (0.5, 1.1), "step_sizes": (1e-4, 1e-1)})
+net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], axis=1), optimizer="adam",
+             loss="nll", lr=1e-2, update_steps=50000, record_output=False, record_loss=False,
+             sampling_steps=50000, optimizer_kwargs={"betas": (0.9, 0.999)}, verbose=True)
 
 # %%
-# In this call to :code:`Network.train`, we chose to perform parameter optimization via the automated
-# gradient calculation features provided by `torch`. We chose the `torch` version of the
-# `resilient backpropagation algorithm <https://pytorch.org/docs/stable/generated/torch.optim.Rprop.html>`_
+# In this call to :code:`Network.fit_bptt`, we chose to perform parameter optimization via backpropagation through time
+# and gradient descent, using the automated gradient calculation features provided by `torch`.
+# We chose the `torch` version of the `resilient backpropagation algorithm <https://pytorch.org/docs/stable/generated/torch.optim.Rprop.html>`_
 # as an optimizer and the `mean-squared error <https://pytorch.org/docs/stable/generated/torch.nn.MSELoss.html>`_ as
 # loss function. Furthermore, we chose an initial learning rate of :code:`lr=1e-2`, and provided some keyword arguments
 # that control how the :code:`RProp` algorithm adjusts that learning rate. Finally, we turned off all variable
 # recordings to speed up the training. Further performance improvements may be achieved by performing the training on
-# the GPU, which can be done by providing the keyword argument :code:`device=`<device name>`.
+# the GPU, which can be done by providing the keyword argument :code:`device=`<device name>` during `Network`
+# initialization.
 
 # %%
 # Step 4: Test the model performance
@@ -174,9 +182,9 @@ net.train_gd(inputs=inp[:train_steps], targets=targets[:train_steps], optimizer=
 # To test whether the training was successful, we can use the :code:`Network.test` method to examine how well the model
 # can distinguish between different input combinations using a test data set:
 
-samples = 500
-obs, loss = net.test(inputs=inp[train_steps:], targets=targets[train_steps:], loss="mse",
-                     record_output=True, record_loss=False, sampling_steps=samples, record_vars=[("s", False)])
+obs, loss = net.test(inputs=inp[train_steps:], targets=np.argmax(targets[train_steps:], axis=1), loss="nll",
+                     verbose=False, record_output=True, record_loss=False, sampling_steps=1,
+                     record_vars=[("rnn", "s", False)])
 
 print(f"Total loss on test data set: {loss}")
 
@@ -188,12 +196,12 @@ print(f"Total loss on test data set: {loss}")
 # on the test data:
 
 _, ax = plt.subplots(figsize=(12, 6))
-obs.matshow("s", interpolation="none", aspect=0.2, ax=ax)
+obs.matshow(("rnn", "s"), interpolation="none", aspect="auto", ax=ax)
 
-fig, axes = plt.subplots(nrows=k, figsize=(12, 9))
-predictions = np.asarray(obs["out"])
+_, axes = plt.subplots(nrows=k, figsize=(12, 9))
+predictions = np.exp(obs.to_numpy("out"))
 for i, ax in enumerate(axes):
-    ax.plot(targets[train_steps::samples, i], "blue")
+    ax.plot(targets[train_steps:, i], "blue")
     ax.plot(predictions[:, i], "orange")
     plt.legend(["target", "prediction"])
 ax.set_xlabel("time")

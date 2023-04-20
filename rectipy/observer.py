@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from typing import Iterable
+from typing import Iterable, Union, Any, Tuple
 from pandas import DataFrame
 from .utility import retrieve_from_dict
 
@@ -29,8 +29,8 @@ class Observer:
         if not record_vars:
             record_vars = []
         self._dt = dt
-        self._state_vars = [v[0] for v in record_vars]
-        self._reduce_vars = [v[1] for v in record_vars]
+        self._state_vars = [v[:2] for v in record_vars]
+        self._reduce_vars = [v[2] for v in record_vars]
         self._recordings = {v: [] for v in self._state_vars}
         self._record_loss = record_loss
         self._record_out = record_output
@@ -39,15 +39,25 @@ class Observer:
         if record_output:
             self._recordings['out'] = []
         self._recordings["steps"] = []
+        self._additional_storage = {}
 
-    def __getitem__(self, item: str):
-        return DataFrame(index=self._recordings["steps"], data=self._recordings[item])
+    def __getitem__(self, item: Union[str, Tuple[str, str]]):
+        try:
+            return self._recordings[item]
+        except KeyError:
+            return self._additional_storage[item]
 
     @property
-    def recorded_rnn_variables(self) -> list:
+    def recorded_state_variables(self) -> list:
         """RNN state variables that are recorded by this `Observer` instance.
         """
         return self._state_vars
+
+    @property
+    def recorded_variables(self) -> list:
+        """RNN state variables that are recorded by this `Observer` instance.
+        """
+        return list(self._recordings.keys())
 
     @property
     def recordings(self):
@@ -57,9 +67,17 @@ class Observer:
         if self._record_loss:
             columns.append("loss")
         data = np.asarray([self[v] for v in columns]).T
-        return DataFrame(index=self._recordings["step"], data=data, columns=columns)
+        return DataFrame(index=np.asarray(self._recordings["steps"])*self._dt, data=data, columns=columns)
 
-    def record(self, step: int, output: torch.Tensor, loss: float, record_vars: Iterable[torch.Tensor]) -> None:
+    def to_dataframe(self, item: Union[str, Tuple[str, str]]):
+        try:
+            data = self.to_numpy(item)
+            return DataFrame(index=np.asarray(self._recordings["steps"])*self._dt, data=data)
+        except KeyError:
+            return self[item]
+
+    def record(self, step: int, output: torch.Tensor, loss: Union[float, torch.Tensor],
+               record_vars: Iterable[torch.Tensor]) -> None:
         """Performs a single recording steps.
 
         Parameters
@@ -80,22 +98,46 @@ class Observer:
         recs = self._recordings
         recs["steps"].append(step)
         for key, val, reduce in zip(self._state_vars, record_vars, self._reduce_vars):
-            v = val.detach().cpu().numpy()
-            recs[key].append(np.mean(v) if reduce else v)
+            recs[key].append(torch.mean(val) if reduce else val)
         if self._record_out:
-            recs['out'].append(output.detach().cpu().numpy())
+            recs['out'].append(output)
         if self._record_loss:
             recs['loss'].append(loss)
 
-    def plot(self, y: str, x: str = None, ax: plt.Axes = None, **kwargs) -> plt.Axes:
+    def save(self, key: str, val: Any):
+        """Saves object on observer. Can be retrieved via `key`.
+
+        Parameters
+        ----------
+        key
+            Used for storage/retrieval.
+        val
+            Object to be stored.
+        """
+        self._additional_storage[key] = val
+
+    def to_numpy(self, item: Union[str, Tuple[str, str]]) -> np.ndarray:
+        try:
+            val = self._recordings[item]
+        except KeyError:
+            val = self._additional_storage[item]
+        try:
+            val_numpy = np.asarray([v.detach().cpu().numpy() for v in val])
+        except AttributeError as e:
+            raise e
+        return val_numpy
+
+    def plot(self, y: Union[str, Tuple[str, str]], x: Union[str, Tuple[str, str]] = None, ax: plt.Axes = None,
+             **kwargs) -> plt.Axes:
         """Create a line plot with variable `y` on the y-axis and `x` on the x-axis.
 
         Parameters
         ----------
         y
-            Name of the variable to be plotted on the y-axis.
+            Tuple that contains the names of the node and the node variable to be plotted on the y-axis.
         x
-            Name of the variable to be plotted on the x-axis. If not provided, `y` will be plotted against time steps.
+            Tuple that contains the names of the node and the node variable to be plotted on the x-axis.
+            If not provided, `y` will be plotted against time steps.
         ax
             `matplotlib.pyplot.Axes` instance in which to plot.
         kwargs
@@ -111,22 +153,23 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        y_sig = np.asarray(self._recordings[y])
-        x_sig = np.asarray(self._recordings["steps"])*self._dt if x is None else self._recordings[x]
+        if x is None:
+            ax.plot(self.to_dataframe(y), **kwargs)
+        else:
+            ax.plot(self.to_numpy(x), self.to_numpy(y), **kwargs)
 
-        ax.plot(x_sig, y_sig, **kwargs)
-        ax.set_xlabel('time' if x is None else x)
-        ax.set_ylabel(y)
+        ax.set_xlabel('time' if x is None else f"Node: {x[0]}, variable: {x[-1]}" if type(x) is tuple else x)
+        ax.set_ylabel(f"Node: {y[0]}, variable: {y[-1]}" if type(y) is tuple else y)
 
         return ax
 
-    def matshow(self, v: str, ax: plt.Axes = None, **kwargs) -> plt.Axes:
+    def matshow(self, v: Union[str, Tuple[str, str]], ax: plt.Axes = None, **kwargs) -> plt.Axes:
         """Create a 2D color plot of variable `v`.
 
         Parameters
         ----------
         v
-            Name of the variable to be plotted.
+            Tuple that contains the names of the node and the node variable to be plotted.
         ax
             `matplotlib.pyplot.Axes` instance in which to plot.
         kwargs
@@ -142,12 +185,14 @@ class Observer:
             subplot_kwargs = retrieve_from_dict(['figsize'], kwargs)
             _, ax = plt.subplots(**subplot_kwargs)
 
-        sig = np.asarray(self._recordings[v])
+        sig = self.to_dataframe(v)
+        if type(sig) is not np.ndarray:
+            sig = np.asarray(sig)
 
         shrink = kwargs.pop("shrink", 0.6)
         im = ax.imshow(sig.T, **kwargs)
         plt.colorbar(im, ax=ax, shrink=shrink)
         ax.set_xlabel('time')
-        ax.set_ylabel(v)
+        ax.set_ylabel(f"Node: {v[0]}, variable: {v[1]}" if type(v) is tuple else v)
 
         return ax

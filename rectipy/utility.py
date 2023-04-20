@@ -3,7 +3,6 @@ import torch
 from scipy.stats import rv_discrete, bernoulli
 from typing import Union
 
-
 # helper functions
 ##################
 
@@ -47,7 +46,7 @@ def add_op_name(op: str, var: Union[str, None], new_var_names: dict) -> Union[st
     str
         Updated variable name.
     """
-    if var is None:
+    if var is None or var == "weights":
         return var
     elif "/" in var:
         _, v = var.split("/")
@@ -74,7 +73,8 @@ def to_device(x: torch.Tensor, device: str) -> torch.Tensor:
 ###################################
 
 
-def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -> np.ndarray:
+def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete, homogeneous_weights: bool = True
+                          ) -> np.ndarray:
     """Generate a coupling matrix between nodes aligned on a circle.
 
     Parameters
@@ -86,6 +86,11 @@ def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -
     spatial_distribution
         Probability distribution defined over space. Will be used to draw indices of nodes from which each node in the
         circular network receives inputs.
+    homogeneous_weights
+        If true, all incoming weights to a node will have the same strength. Since incoming edges are drawn
+        with replacement from the spatial distribution, this means that the actual connection probability is smaller or
+        equal to p. If false, each drawn sample will contribute to the edge weights, such that the resulting edge
+        strengths can be heterogeneous.
 
     Returns
     -------
@@ -99,7 +104,12 @@ def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -
         signs = 1 * (bernoulli.rvs(p=0.5, loc=0, size=n_conns) > 0)
         signs[signs == 0] = -1
         conns = _wrap(n + idxs*signs, N)
-        C[n, conns] = 1.0/n_conns
+        conns_unique = np.unique(conns)
+        if homogeneous_weights:
+            C[n, conns_unique] = 1.0 / len(conns_unique)
+        else:
+            for idx in conns_unique:
+                C[n, idx] = np.sum(conns == idx) / n_conns
     return C
 
 
@@ -207,7 +217,6 @@ def normalize(x: np.ndarray, mode: str = "minmax", row_wise: bool = False) -> np
 # function for optimization
 ###########################
 
-
 def wta_score(x: np.ndarray, y: np.ndarray) -> float:
     """Calculates the winner-takes-all score.
 
@@ -228,111 +237,3 @@ def wta_score(x: np.ndarray, y: np.ndarray) -> float:
     for idx in range(x.shape[0]):
         z[idx] = 1.0 if np.argmax(x[idx, :]) == np.argmax(y[idx, :]) else 0.0
     return float(np.mean(z))
-
-
-def readout(X: np.ndarray, y: np.ndarray, k: int = 1, test_size: float = 0.2, verbose: bool = True,
-            normalize: str = None, **kwargs) -> dict:
-    """Uses Ridge regression to find a set of coefficients `a` that minimizes `y - aX`.
-
-    Parameters
-    ----------
-    X
-        2D array of data (rows = samples, columns = features).
-    y
-        2D array of data (rows = samples, columns = output dimensions) or 1D array of samples.
-    k
-        If larger 1, `k` splits into training and testing data will be performed, and for each of these splits a ridge
-        regression will be calculated.
-    test_size
-        Fraction of the input data that is used for independent testing after the training is done.
-    verbose
-        If true, updates about the regression procedure will be displayed.
-    method
-        Regression method/model to be used. Can be one of 'Ridge', 'RidgeClassifier', 'LogisticRegression',
-        'ElasticNet', or 'Lasso'.
-    normalize
-        Choose from "minmax" or "standard" to scale the input data.
-    kwargs
-        Additional keyword arguments passed to `sklearn.linear_model.SGDClassifier`
-
-    Returns
-    -------
-    dict
-        Contains entries with the following keys:
-         - 'train_score': R2 score training data
-         - 'test_score': R2 score on test data
-         - 'readout_weights': Regression coefficients
-         - 'readout_bias': Regression bias term
-         - 'prediction': Prediction of the fitted classifier for the testing data
-         - 'target': Prediction target, i.e. the testing data
-    """
-
-    # imports
-    from sklearn.linear_model import SGDClassifier
-    from sklearn.model_selection import StratifiedKFold, train_test_split
-    from sklearn.preprocessing import scale, minmax_scale
-
-    # initialize classifier
-    classifier = SGDClassifier(**kwargs)
-
-    # normalize input data
-    if normalize == "minmax":
-        X = minmax_scale(X)
-    elif normalize == "standard":
-        X = scale(X)
-
-    # split into training and test data set
-    if test_size > 0.0:
-        X, X_t, y, y_t = train_test_split(X, y, test_size=test_size, shuffle=False)
-
-    # perform ridge regression
-    if k > 1:
-        splitter = StratifiedKFold(n_splits=k)
-        scores, coefs, intercepts = [], [], []
-        for i, (train_idx, test_idx) in enumerate(splitter.split(X=X, y=y)):
-            classifier.fit(X[train_idx], y[train_idx])
-            scores.append(classifier.score(X=X[test_idx], y=y[test_idx]))
-            coefs.append(classifier.coef_)
-            intercepts.append(classifier.intercept_)
-    else:
-        classifier.fit(X, y)
-        scores = [classifier.score(X=X, y=y)]
-        coefs = [classifier.coef_]
-        intercepts = [classifier.intercept_]
-
-    # store readout weights
-    w_out = np.mean(coefs, axis=0)
-    intercept = np.mean(intercepts, axis=0)
-    train_score = np.mean(scores)
-
-    if verbose:
-        print(f'Finished readout training.')
-        if k > 1:
-            print(fr'Average, cross-validated score across {k} test folds: {train_score}')
-        else:
-            print(fr'Score on training data: {train_score}')
-
-    # store temporary results
-    res = {"train_score": train_score, "readout_weights": w_out, "readout_bias": intercept, "test_score": None,
-           "prediction": None, "target": None}
-
-    # perform testing
-    if test_size > 0.0:
-
-        classifier.coef_ = w_out
-        classifier.intercept_ = intercept
-
-        res["test_score"] = classifier.score(X=X_t, y=y_t)
-        res["prediction"] = classifier.predict(X_t)
-        res["target"] = y_t
-
-        if verbose:
-            print(f'Finished readout training.')
-            print(fr"Score on testing data: {res['test_score']}")
-
-    else:
-
-        res["prediction"] = classifier.predict(X)
-        res["target"] = y
-
-    return res

@@ -33,13 +33,16 @@ As a first step, let's define a network of :math:`N = 5` randomly coupled QIF ne
 from rectipy import Network
 import numpy as np
 
-# network initialization
+# network parameters
 N = 5
 J = np.random.rand(N, N) * 20.0
 dt = 1e-3
-qif = Network.from_yaml("neuron_model_templates.spiking_neurons.qif.qif", weights=J, dt=dt,
-                        source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                        spike_var="spike", spike_def="v", op="qif_op")
+node = "neuron_model_templates.spiking_neurons.qif.qif"
+
+# network initialization
+qif = Network(dt=dt, device="cpu")
+qif.add_diffeq_node("qif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
+                    spike_var="spike", spike_def="v", op="qif_op")
 
 # %%
 # An important variable for numerical integration is the integration step-size :code:`dt`. It's default value is
@@ -57,7 +60,7 @@ qif = Network.from_yaml("neuron_model_templates.spiking_neurons.qif.qif", weight
 # Here, we apply a sine wave input to some of the target neurons, for demonstration purposes.
 
 # initialize input array
-steps = 10000
+steps = 30000
 time = np.arange(0, steps) * dt
 inp = np.zeros((steps, N))
 
@@ -73,7 +76,7 @@ for n, amp, freq in zip(target_neurons, inp_strengths, inp_freqs):
 # plot the inputs
 import matplotlib.pyplot as plt
 plt.plot(inp)
-plt.legend([f"inp_{i}" for i in target_neurons])
+plt.legend([f"inp_{i}" for i in range(N)])
 plt.show()
 
 # %%
@@ -101,7 +104,12 @@ plt.show()
 # that control the recording of RNN state variables. These are described in more detail in the
 # use example that covers the `rectipy.observer.Observer <https://rectipy.readthedocs.io/en/latest/auto_interfaces/observer.html>`_ class.
 # Finally, the `rectipy.Network.run` method allows to toggle the progress display via the
-# :code:`verbose` keyword argument, and allows to choose the device you would like the numerical integration to be performed on
-# via the :code:`device` keyword argument:
+# :code:`verbose` keyword argument:
 
-obs = qif.run(inp, verbose=False, device="cpu")
+obs = qif.run(inp, verbose=False)
+
+# %%
+# If you wanted to speed up the simulation process by running it on one of your GPUs, simply change the device setting
+# during network initialization, i.e. `Network(dt=1e-3, device="cuda:0"`.
+# Note that this will fail if PyTorch was not compiled to be cuda compatible or if PyTorch cannot detect any cuda
+# devices.

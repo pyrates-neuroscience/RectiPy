@@ -159,10 +159,9 @@ plt.show()
 # Now, we have all pre-requisites to start our optimization procedure.
 # To this end, we will use the `Network.train` method:
 
-net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], axis=1), optimizer="rprop",
+net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], axis=1), optimizer="adam",
              loss="nll", lr=1e-3, update_steps=100000, record_output=False, record_loss=False,
-             sampling_steps=100000, optimizer_kwargs={"etas": (0.5, 1.1), "step_sizes": (1e-5, 1e-1)},
-             verbose=True)
+             sampling_steps=100000, optimizer_kwargs={"betas": (0.9, 0.999)}, verbose=True)
 
 # %%
 # In this call to :code:`Network.fit_bptt`, we chose to perform parameter optimization via backpropagation through time

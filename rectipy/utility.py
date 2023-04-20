@@ -73,7 +73,8 @@ def to_device(x: torch.Tensor, device: str) -> torch.Tensor:
 ###################################
 
 
-def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -> np.ndarray:
+def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete, homogeneous_weights: bool = True
+                          ) -> np.ndarray:
     """Generate a coupling matrix between nodes aligned on a circle.
 
     Parameters
@@ -85,6 +86,11 @@ def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -
     spatial_distribution
         Probability distribution defined over space. Will be used to draw indices of nodes from which each node in the
         circular network receives inputs.
+    homogeneous_weights
+        If true, all incoming weights to a node will have the same strength. Since incoming edges are drawn
+        with replacement from the spatial distribution, this means that the actual connection probability is smaller or
+        equal to p. If false, each drawn sample will contribute to the edge weights, such that the resulting edge
+        strengths can be heterogeneous.
 
     Returns
     -------
@@ -98,7 +104,12 @@ def circular_connectivity(N: int, p: float, spatial_distribution: rv_discrete) -
         signs = 1 * (bernoulli.rvs(p=0.5, loc=0, size=n_conns) > 0)
         signs[signs == 0] = -1
         conns = _wrap(n + idxs*signs, N)
-        C[n, conns] = 1.0/n_conns
+        conns_unique = np.unique(conns)
+        if homogeneous_weights:
+            C[n, conns_unique] = 1.0 / len(conns_unique)
+        else:
+            for idx in conns_unique:
+                C[n, idx] = np.sum(conns == idx) / n_conns
     return C
 
 

@@ -10,6 +10,7 @@ import numpy as np
 from time import perf_counter
 from networkx import DiGraph
 from multipledispatch import dispatch
+import gc
 
 
 class Network(Module):
@@ -468,8 +469,8 @@ class Network(Module):
 
         # post-simulation clean up
         del inputs
-        with torch.no_grad():
-            torch.cuda.empty_cache()
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return obs
 
@@ -568,8 +569,8 @@ class Network(Module):
 
         # post-simulation clean up
         del inp_tensor, target_tensor
-        with torch.no_grad():
-            torch.cuda.empty_cache()
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return obs
 
@@ -651,8 +652,8 @@ class Network(Module):
 
         # post-simulation clean up
         del inp_tensor, target_tensor
-        with torch.no_grad():
-            torch.cuda.empty_cache()
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return obs
 

@@ -36,7 +36,7 @@ J = random_connectivity(N, N, p, normalize=True)
 net = Network(dt=1e-2)
 net.add_diffeq_node("rnn", node, weights=J, source_var="s", target_var="s_in", input_var="s_ext", output_var="s",
                     spike_var="spike", spike_def="v", op="lif_op",
-                    node_vars={"k": 100.0, "tau": 5.0, "eta": -0.5, "tau_s": 10.0},
+                    node_vars={"k": 10.0, "tau": 5.0, "eta": -0.5, "tau_s": 10.0},
                     v_reset=-1e2, v_peak=1e2, clear=True, train_params=["weights"])
 
 # %%
@@ -160,9 +160,9 @@ plt.show()
 # Now, we have all pre-requisites to start our optimization procedure.
 # To this end, we will use the `Network.train` method:
 
-net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], axis=1), optimizer="adam",
-             loss="nll", lr=1e-2, update_steps=50000, record_output=False, record_loss=False,
-             sampling_steps=50000, optimizer_kwargs={"betas": (0.9, 0.999)}, verbose=True)
+net.fit_bptt(inputs=inp[:train_steps], targets=np.argmax(targets[:train_steps], axis=1), optimizer="rmsprop",
+             loss="nll", lr=1e-4, update_steps=50000, record_output=False, record_loss=False,
+             sampling_steps=50000, verbose=True)
 
 # %%
 # In this call to :code:`Network.fit_bptt`, we chose to perform parameter optimization via backpropagation through time

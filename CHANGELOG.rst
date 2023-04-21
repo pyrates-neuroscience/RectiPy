@@ -4,6 +4,11 @@ Changelog
 0.10
 ----
 
+0.10.1
+------
+
+- added a new method `Network.clear()` that removes all nodes and edges from a `rectipy.Network` instance
+
 0.10.0
 ------
 

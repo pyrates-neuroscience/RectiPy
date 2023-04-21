@@ -307,6 +307,8 @@ class Network(Module):
         return edge
 
     def compile(self):
+        """Automatically detects a forward pass through the network based on the nodes and edges in the network.
+        """
 
         # make sure that only a single input node exists
         in_nodes = [n for n in self.graph.nodes if self.graph.in_degree(n) == 0]
@@ -375,6 +377,17 @@ class Network(Module):
                 n.detach(requires_grad=True, detach_params=False)
 
     def reset(self, state: dict = None):
+        """Reset the network state.
+
+        Parameters
+        ----------
+        state
+            Optional dictionary, that contains state-vectors (values) for nodes of the network (keys).
+
+        Returns
+        -------
+        None
+        """
         for node in self.nodes:
             n = self.get_node(node)
             if hasattr(n, "y"):
@@ -382,6 +395,12 @@ class Network(Module):
                     n.reset(state[n])
                 else:
                     n.reset()
+
+    def clear(self):
+        """Removes all nodes and edges from the network
+        """
+        for node in list(self.nodes):
+            self.pop_node(node)
 
     def run(self, inputs: Union[np.ndarray, torch.Tensor], sampling_steps: int = 1, verbose: bool = True,
             enable_grad: bool = True, **kwargs) -> Observer:

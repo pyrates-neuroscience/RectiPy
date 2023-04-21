@@ -368,13 +368,25 @@ class Network(Module):
             for p in g[s][t]["edge"].parameters():
                 yield p
 
-    def detach(self) -> None:
+    def detach(self, requires_grad: bool = True, detach_params: bool = False) -> None:
         """Goes through all DE-based nodes and detaches their state variables from the current graph for gradient
-        calculation."""
+        calculation.
+
+        Parameters
+        ----------
+        requires_grad
+            If true, all tensors that will be detached will be set to require gradient calculation after detachment.
+        detach_params
+            If true, parameters that require gradient calculation will be detached as well.
+
+        Returns
+        -------
+        None
+        """
         for node in self.nodes:
             n = self.get_node(node)
             if hasattr(n, "y"):
-                n.detach(requires_grad=True, detach_params=False)
+                n.detach(requires_grad=requires_grad, detach_params=detach_params)
 
     def reset(self, state: dict = None):
         """Reset the network state.

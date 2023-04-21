@@ -466,6 +466,11 @@ class Network(Module):
                 if truncate_steps < steps and step % truncate_steps == truncate_steps-1:
                     self.detach()
 
+        # post-simulation clean up
+        del inputs
+        with torch.no_grad():
+            torch.cuda.empty_cache()
+
         return obs
 
     def fit_bptt(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
@@ -560,6 +565,12 @@ class Network(Module):
                              sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
+
+        # post-simulation clean up
+        del inp_tensor, target_tensor
+        with torch.no_grad():
+            torch.cuda.empty_cache()
+
         return obs
 
     def fit_ridge(self, inputs: np.ndarray, targets: np.ndarray, sampling_steps: int = 100, alpha: float = 1e-4,
@@ -637,6 +648,12 @@ class Network(Module):
 
         obs.save("y", y)
         obs.save("w_out", w_out)
+
+        # post-simulation clean up
+        del inp_tensor, target_tensor
+        with torch.no_grad():
+            torch.cuda.empty_cache()
+
         return obs
 
     def fit_rls(self, inputs: np.ndarray, targets: np.ndarray, feedback_weights: np.ndarray = None,

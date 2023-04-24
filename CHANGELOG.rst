@@ -9,6 +9,9 @@ Changelog
 
 - added a new method `Network.clear()` that removes all nodes and edges from a `rectipy.Network` instance
 - added new keyword arguments to `Network.detach()` that allow to customize the behavior of the method with respect to which tensors are going to be detached and whether they should require a gradient after detachment or not
+- added a new method `Network.set_var()` that allows to change the values of variables in the network instance
+- added a new method `Node.set_param()` that allows to change the values of parameters of the node
+- improved documentation of the methods of `rectipy.Network`
 
 0.10.0
 ------

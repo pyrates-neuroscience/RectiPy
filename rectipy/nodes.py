@@ -188,6 +188,25 @@ class RateNet(Module):
             y_new[torch.tensor(idx, dtype=torch.long)] = torch.tensor(y, dtype=y_new.dtype, requires_grad=grad)
             self.y = to_device(y_new, self.device)
 
+    def set_param(self, param: str, val: Union[torch.Tensor, float]):
+        """Set value of a node parameter.
+
+        Parameters
+        ----------
+        param
+            Name of the parameter.
+        val
+            New value of that parameter.
+
+        Returns
+        -------
+        None
+        """
+        try:
+            self._args[self._param_map[param]] = val
+        except KeyError:
+            raise KeyError(f"Parameter {param} was not found on the node.")
+
     @classmethod
     def _circuit_from_yaml(cls, node: Union[str, NodeTemplate], dt: float, weights: np.ndarray = None,
                            source_var: str = None, target_var: str = None, **kwargs) -> tuple:

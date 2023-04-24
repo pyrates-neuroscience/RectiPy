@@ -1,4 +1,5 @@
 import torch
+from networkx.classes.reportviews import NodeView
 from torch.nn import Module
 from typing import Union, Iterator, Callable, Tuple, Optional
 from .nodes import RateNet, SpikeNet, ActivationFunction
@@ -60,7 +61,7 @@ class Network(Module):
         return self.forward(*args, **kwargs)
 
     @property
-    def n_out(self):
+    def n_out(self) -> int:
         """Current output dimensionality.
         """
         try:
@@ -69,7 +70,7 @@ class Network(Module):
             return 0
 
     @property
-    def n_in(self):
+    def n_in(self) -> int:
         """Current input dimensionality of the network.
         """
         try:
@@ -78,31 +79,100 @@ class Network(Module):
             return 0
 
     @property
-    def nodes(self):
-        """Network nodes"""
+    def nodes(self) -> NodeView:
+        """Network nodes
+        """
         return self.graph.nodes
 
     @property
-    def state(self):
-        return {n: self.get_node(n).y for n in self.nodes}
-
-    def get_node(self, n: str) -> Union[ActivationFunction, RateNet]:
-        """Returns node instance from the network.
+    def state(self) -> dict:
+        """Dictionary containing the state vectors of each differential equation node in the network.
         """
-        return self[n]["node"]
+        states = {}
+        for n in self.nodes:
+            try:
+                states[n] = self.get_node(n).y
+            except AttributeError:
+                pass
+        return states
 
-    def get_edge(self, source: str, target: str):
+    def get_node(self, node: str) -> Union[ActivationFunction, RateNet]:
+        """Returns node instance from the network.
+
+        Parameters
+        ----------
+        node
+            Name of the node.
+
+        Returns
+        -------
+        Union[ActivationFunction, RateNet]
+            Instance of a node class.
+        """
+        return self[node]["node"]
+
+    def get_edge(self, source: str, target: str) -> Linear:
         """Returns edge instance from the network.
+
+        Parameters
+        ----------
+        source
+            Name of the source node.
+        target
+            Name of the target node.
+
+        Returns
+        -------
+        Linear
+            Instance of the edge class.
         """
         return self[source, target]["edge"]
 
-    def get_var(self, node: str, var: str):
+    def get_var(self, node: str, var: str) -> Union[torch.Tensor, float]:
         """Returns variable from network node.
+
+        Parameters
+        ----------
+        node
+            Name of the network node.
+        var
+            Name of the node variable.
+
+        Returns
+        -------
+        Union[torch.Tensor, float]
+
         """
         try:
             return self.get_node(node)[self._relabel_var(var)]
         except KeyError:
             return self[node][var]
+
+    def set_var(self, node: str, var: str, val: Union[torch.Tensor, float]):
+        """Set the value of a network node variable.
+
+        Parameters
+        ----------
+        node
+            Name of the network node.
+        var
+            Name of the node variable.
+        val
+            New variable value.
+
+        Returns
+        -------
+        None
+        """
+        try:
+            n = self.get_node(node)
+            try:
+                n.set_param(var, val)
+            except KeyError:
+                v = n[var]
+                v[:] = val
+        except KeyError:
+            raise KeyError(f"Variable {var} was not found on node {node}.")
 
     def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None) -> None:
         """Add node to the network, based on an instance from `rectipy.nodes`.
@@ -295,6 +365,16 @@ class Network(Module):
 
     def pop_node(self, node: str) -> Union[ActivationFunction, RateNet]:
         """Removes (and returns) a node from the network.
+
+        Parameters
+        ----------
+        node
+            Name of the node to remove.
+
+        Returns
+        -------
+        Union[ActivationFunction, RateNet]
+            Removed node.
         """
         node_data = self.get_node(node)
         self.graph.remove_node(node)
@@ -302,6 +382,18 @@ class Network(Module):
 
     def pop_edge(self, source: str, target: str) -> Linear:
         """Removes (and returns) an edge from the network.
+
+        Parameters
+        ----------
+        source
+            Name of the source node.
+        target
+            Name of the target node.
+
+        Returns
+        -------
+        Linear
+            Removed edge.
         """
         edge = self.get_edge(source, target)
         self.graph.remove_edge(source, target)

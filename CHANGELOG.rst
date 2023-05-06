@@ -4,6 +4,12 @@ Changelog
 0.10
 ----
 
+0.10.2
+------
+
+- debugged the `Network.reset()` method. Properly resets the network to the passed state dictionary now, if provided.
+- improved the `RateNet.reset()` method. The method can now handle both numpy arrays as well as tensors as input.
+
 0.10.1
 ------
 
@@ -12,7 +18,6 @@ Changelog
 - added a new method `Network.set_var()` that allows to change the values of variables in the network instance
 - added a new method `Node.set_param()` that allows to change the values of parameters of the node
 - improved documentation of the methods of `rectipy.Network`
-- debugged the `Network.reset()` method. Properly resets the network to the passed state dictionary now, if provided.
 
 0.10.0
 ------

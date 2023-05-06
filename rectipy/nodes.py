@@ -177,16 +177,19 @@ class RateNet(Module):
             if type(v) is torch.Tensor:
                 v.requires_grad = requires_grad
 
-    def reset(self, y: np.ndarray = None, idx: np.ndarray = None):
+    def reset(self, y: Union[np.ndarray, torch.Tensor] = None, idx: np.ndarray = None):
         if y is None:
             y = np.zeros_like(self.y.detach().cpu().numpy())
-        grad = self.y.requires_grad
-        if idx is None:
-            self.y = self.y.clone().detach()
-            self.y.requires_grad = grad
+        if type(y) is torch.Tensor:
+            y = y.clone().detach()
+            y.requires_grad = self.y.requires_grad
         else:
-            y_new = self.y.clone()
-            y_new[torch.tensor(idx, dtype=torch.long)] = torch.tensor(y, dtype=y_new.dtype, requires_grad=grad)
+            y = torch.tensor(y, dtype=self.y.dtype, requires_grad=self.y.requires_grad)
+        if idx is None:
+            self.y = y
+        else:
+            y_new = self.y.clone().detach()
+            y_new[torch.tensor(idx, dtype=torch.long)] = y
             self.y = to_device(y_new, self.device)
 
     def set_param(self, param: str, val: Union[torch.Tensor, float]):

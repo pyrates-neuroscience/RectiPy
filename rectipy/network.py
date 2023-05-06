@@ -404,8 +404,8 @@ class Network(Module):
         for node in self.nodes:
             n = self.get_node(node)
             if hasattr(n, "y"):
-                if state and n in state:
-                    n.reset(state[n])
+                if state and node in state:
+                    n.reset(state[node])
                 else:
                     n.reset()
 

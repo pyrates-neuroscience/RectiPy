@@ -9,6 +9,7 @@ Changelog
 
 - added a new method `Network.clear()` that removes all nodes and edges from a `rectipy.Network` instance
 - added new keyword arguments to `Network.detach()` that allow to customize the behavior of the method with respect to which tensors are going to be detached and whether they should require a gradient after detachment or not
+- debugged the `Network.reset()` method. Properly resets the network to the passed state dictionary now, if provided.
 
 0.10.0
 ------

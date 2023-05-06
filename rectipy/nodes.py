@@ -182,7 +182,8 @@ class RateNet(Module):
             y = np.zeros_like(self.y.detach().cpu().numpy())
         grad = self.y.requires_grad
         if idx is None:
-            self.y = torch.tensor(y, dtype=self.y.dtype, device=self.device, requires_grad=grad)
+            self.y = self.y.clone().detach()
+            self.y.requires_grad = grad
         else:
             y_new = self.y.clone()
             y_new[torch.tensor(idx, dtype=torch.long)] = torch.tensor(y, dtype=y_new.dtype, requires_grad=grad)

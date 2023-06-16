@@ -250,7 +250,8 @@ class RateNet(Module):
         results = {}
         for var in list(var_indices.keys()):
             try:
-                results[var] = [val[0] for val in var_indices.pop(var).values()]
+                results[var] = [val[0] for val in var_indices[var].values()]
+                var_indices.pop(var)
             except AttributeError:
                 results[var] = var_indices.pop(var)
             results[var] = (results[var][0], results[var][-1] + 1)

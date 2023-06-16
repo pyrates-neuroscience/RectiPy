@@ -4,6 +4,11 @@ Changelog
 0.10
 ----
 
+0.10.3
+------
+
+- removed a minor bug in `nodes.py` that led to issues with retrieving variable indices from single-neuron nodes
+
 0.10.2
 ------
 

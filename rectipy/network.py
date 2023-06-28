@@ -299,6 +299,7 @@ class Network(Module):
             - 'softmax' for `torch.nn.Softmax(dim=0)`
             - 'softmin' for `torch.nn.Softmin(dim=0)`
             - 'log_softmax' for `torch.nn.LogSoftmax(dim=0)`
+            - 'identity' for `torch.nn.Identity`
 
         Returns
         -------

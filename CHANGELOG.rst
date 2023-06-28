@@ -7,6 +7,8 @@ Changelog
 0.10.3
 ------
 
+- updated documentation of user interfaces
+- updated use examples for user interfaces
 - removed a minor bug in `nodes.py` that led to issues with retrieving variable indices from single-neuron nodes
 - removed a bug in `nodes.py` where, in some cases, the state vector `y` was not moved to the correct device after state resets
 

@@ -25,25 +25,30 @@ Instead, the following code suffices to implement a model of :math:`N=100` rando
     import numpy as np
 
     # model parameters
-    model = "neuron_model_templates.rate_neurons.leaky_integrator.tanh_pop"
+    model = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
     N = 100
     J = np.random.randn(N, N)
+    dt = 1e-3
 
-    # model initialization
-    net = Network.from_yaml(model, weights=J,
-                            source_var="tanh_op/r", target_var="li_op/r_in",
-                            input_var="li_op/I_ext", output_var="li_op/u")
+    # initialize Network instace
+    net = Network(dt=dt, device="cpu")
+
+    # add a population of N coupled rate neurons to the network
+    net.add_diffeq_node("tanh", node, weights=J, source_var="tanh_op/r",
+                        target_var="li_op/r_in", input_var="li_op/I_ext",
+                        output_var="li_op/v")
 
 
 We simply had to pass the pointer to the model template and the weight matrix, and provide the names of the variables that
 we wanted to couple recurrently via the weights (:code:`source_var` to :code:`target_var`) and the names of the variables
-that we wanted to declare as the input and output of the RNN layer.
+that we wanted to declare as the input and output of the rate neuron population.
 The specific names of these variables depend on the structure of the model template, which is explained in detail in the
 `PyRates documentation <https://pyrates.readthedocs.io/en/latest/template_specification.html>`_.
-For a more detailed explanation of how to use the :code:`rectipy.Network.from_yaml` method, see this use example.
+For a more detailed explanation of how to use the :code:`rectipy.Network.add_diffeq_node` method, see this
+`use example <https://rectipy.readthedocs.io/en/latest/auto_interfaces/model_definition.html>`_..
 
-In a next step, we could either add additional input and output layers to the :code:`Network` instance, use the :code:`Network.train`
-method to fit some of its parameters, or perform numerical simulations via :code:`Network.run`.
+In a next step, we could either add additional input and output layers to the :code:`Network` instance, use the :code:`Network.fit_bptt`
+method to fit some of its parameters via backpropagation throug time, or perform numerical simulations via :code:`Network.run`.
 Here, we will do the latter. Concretely, we will use the standard `Euler method <https://en.wikipedia.org/wiki/Euler_method>`_ to numerically solve the
 `initial value problem <http://www.scholarpedia.org/article/Initial_value_problems>`_ :math:`u_i(t) = \int_{t0}^t \dot u_i dt'`,
 given initial time point :math:`t_0` and initial network state :math:`u_i(t_0) \forall i`.

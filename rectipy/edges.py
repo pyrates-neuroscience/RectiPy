@@ -22,8 +22,8 @@ class Linear(Module):
         if weights.shape[0] == n_in and weights.shape[1] == n_out:
             weights = weights.T
         elif weights.shape[0] != n_out or weights.shape[1] != n_in:
-            raise ValueError("Shape of the provided weights does not match the input and output dimensions of the"
-                             "layer.")
+            raise ValueError("Shape of the provided weights does not match the input and output dimensions of the "
+                             "source and target nodes.")
 
         # set public attributes
         self.n_in = n_in

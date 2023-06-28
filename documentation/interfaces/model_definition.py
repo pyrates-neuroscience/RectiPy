@@ -14,11 +14,12 @@ Here, we will make use of the pre-implemented neuron models that come with `Rect
 `rectipy.Network` based on a neuron model template and how the `rectipy.Network` can be customized afterwards to
 construct a neural network model of choice.
 
-How to create a network instance from a YAML template
------------------------------------------------------
+How to create a network with differential-equation-based nodes
+--------------------------------------------------------------
 
-Let's begin with the `rectipy.Network.from_yaml` method.
-The code below initializes a `rectipy.Network` instance of :math:`N = 10` rate-coupled LI neurons via that method.
+Let's begin with the `rectipy.Network.add_diffeq_node` method.
+The code below initializes a `rectipy.Network` instance and adds :math:`N = 5` rate-coupled LI neurons to the network via this method.
+LI rate neurons are defined via a single ordinary differential equation.
 For an introduction to the LI rate neuron model, see `the respective use example <https://rectipy.readthedocs.io/en/latest/auto_models/leaky_integrator.html>`_.
 """
 
@@ -29,10 +30,14 @@ import numpy as np
 node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
 N = 5
 J = np.random.randn(N, N)*2.0
+dt = 1e-3
 
 # initialize network
-net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
-                        output_var="li_op/v")
+net = Network(dt=dt, device="cpu")
+
+# add a rate-neuron population to the network
+net.add_diffeq_node("tanh", node, weights=J, source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
+                    output_var="li_op/v")
 
 # %%
 # In the code above, the variable :code:`node` is a path pointing to a YAML template that defines the dynamic equations and
@@ -41,9 +46,9 @@ net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_
 # neuron model, you can use standard Python syntax to specify the path to that model, i.e. :code:`node = "<path>/<yaml_file_name>.<template_name>"`.
 # As a second important piece of our network definition, we need to provide an :math:`N x N` coupling matrix, that defines
 # the structure of the recurrent coupling in a network of :math:`N` neurons. Above, we call this matrix :code:`J`.
-# During the call to `rectipy.Network.from_yaml`, an `rectipy.rnn_layer.RNNLayer` instance will be created, which is the
-# core layer of any network. It will be accessible via the attribute `Network.rnn_layer` and contains a network of
-# :math:`N` recurrently coupled neurons, with the neuron type given by :code:`node` and the coupling weights given by :code:`J`.
+# During the call to `rectipy.Network.add_diffeq_node`, a `rectipy.nodes.RateNet` instance will be created, which can be accessed via
+# `net["tanh"]` and contains a network of :math:`N` recurrently coupled neurons,
+# with the neuron type given by :code:`node` and the coupling weights given by :code:`J`.
 # The variables :code:`source_var` and :code:`target_var` specify which variables of the neuron model to use to establish the
 # recurrent coupling. In the above example, we specify to project the variable :code:`r` of each neuron,
 # defined in operator template :code:`tanh_op`, to the variable :code:`r_in` of each neuron, defined in operator template :code:`li_op`.
@@ -58,36 +63,42 @@ net = Network.from_yaml(node, weights=J, source_var="tanh_op/r", target_var="li_
 # network layers.
 #
 # Below, we show how to access a couple of relevant attributes of the network. For a full documentation of the
-# different attributes of `rectipy.network.Network` and `rectipy.rnn_layer.RNNLayer` instances, see our `API <https://rectipy.readthedocs.io/en/latest/rectipy.html>`_.
+# different attributes of `rectipy.network.Network` and `rectipy.nodes.RateNet` instances, see our `API <https://rectipy.readthedocs.io/en/latest/rectipy.html>`_.
+
+net.compile()
 
 print(f"Number of neurons in network: {net.n_out}")
-print(f"RNN layer: {net.rnn_layer}")
-print(f"State variables of the neurons in the RNN layer: {net.rnn_layer.variable_names}")
-print(f"RNN layer parameters: {net.rnn_layer.parameter_names}")
+print(f"Network nodes: {net.nodes}")
+print(f"State variables of the network: {net.state}")
+print(f"LI population parameters: {net['tanh']['node'].parameter_names}")
 
 # %%
 # How to create a spiking neural network
 # --------------------------------------
 #
 # in the above example, we initialized a network of rate neurons. To initialize a network of spiking neurons instead,
-# we need to provide two additional keyword arguments to `Network.from_yaml`:
+# we need to provide two additional keyword arguments to `Network.add_diffeq_node`:
 
 # change neuron model to leaky integrate-and-fire neuron
 node = "neuron_model_templates.spiking_neurons.lif.lif"
 
 # initialize network
-net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
-                        output_var="s", op="lif_op", spike_var="spike", spike_def="v")
+net = Network(dt=dt, device="cpu")
+
+# initialize network
+net.add_diffeq_node("lif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
+                    output_var="s", op="lif_op", spike_var="spike", spike_def="v", spike_threshold=100.0,
+                    spike_reset=-100.0)
 
 # %%
-# First, note that we did not provide the operator template names with the variable names in this call to `Network.from_yaml`.
+# First, note that we did not provide the operator template names with the variable names in this call to `Network.add_diffeq_node`.
 # Instead, we provided the operator name as a separate keyword argument :code:`op`. This is possible in this case,
 # since the LIF neuron template only consists of a single operator template.
 #
 # The keyword argument :code:`spike_var` specifies which variable to use to store spikes in, whereas the keyword
 # argument :code:`spike_def` specifies which state variable to use to define the spiking condition of a neuron.
-# When these two keyword arguments are provided, `rectipy.Network` is initialized with a `rectipy.rnn_layer.SRNNLayer`
-# instance instead of a `rectipy.rnn_layer.RNNLayer` instance. The class `rectipy.rnn_layer.SRNNLayer` implements the
+# When these two keyword arguments are provided, `rectipy.Network` is initialized with a `rectipy.nodes.SpikeNet`
+# instance instead of a `rectipy.nodes.RateNet` instance. The class `rectipy.nodes.SpikeNet` implements the
 # following spike condition:
 #
 # .. code-block::
@@ -98,65 +109,50 @@ net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", inpu
 #           spike_var = 0.0
 #
 # In more mathematic terms, and specific to our example model, this means that a spike is counted when :math:`v_i \geq \theta`,
-# where :math:`\theta` is the spiking threshold. The variable specified as :code:`spike_var` is then defined as :math:`\delta(v_i-\theta)`,
-# where :math:`\delta` is the `Dirac delta function <https://en.wikipedia.org/wiki/Dirac_delta_function>`_, and the neuron's
+# where :math:`\theta` is the spiking threshold. A spike is then counted via the variable :code:`spike_var` and the neuron's
 # state variable is reset: :math:`v_i \rightarrow v_r`.
 # The two control parameters of this spike reset conditions, :math:`\theta` and :math:`v_r`,  can be controlled via two
-# additional keyword arguments:
-
-net = Network.from_yaml(node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
-                        output_var="s", op="lif_op", spike_var="spike", spike_def="v", spike_threshold=100.0,
-                        spike_reset=-100.0)
-
-# %%
-# The default parameters of these two keyword arguments are as specified in the above call to `Network.from_yaml`.
+# additional keyword arguments: :code:`spike_threshold` and :code:`spike_reset`.
+# The default parameters of these two keyword arguments are as specified in the above call to `Network.add_diffeq_node`.
 # Let's inspect the differences between the spiking network RNN layer and the rate-neuron RNN layer.
 
-print(f"RNN layer: {net.rnn_layer}")
-print(f"State variables of the neurons in the RNN layer: {net.rnn_layer.variable_names}")
-print(f"RNN layer parameters: {net.rnn_layer.parameter_names}")
-print(f"Additional RNN layer state variable: {net['s']}")
-print(f"RNN layer synaptic time constant: {net['tau_s']}")
+net.compile()
+
+print(f"Number of neurons in network: {net.n_out}")
+print(f"Network nodes: {net.nodes}")
+print(f"State variables of the network: {net.state}")
+print(f"LI population parameters: {net['lif']['node'].parameter_names}")
 
 # %%
-# As can be seen, the attribute `Network.rnn_layer` is now an `SRNNLayer` instance instead of an `RNNLayer` instance.
-# Furthermore, the RNN layer has a different state vector and a different number of parameters, owing to the differences
+# As can be seen, a `SpikeNet` instance is now the only network node instead of a `RateNet` instance.
+# Furthermore, the network node has a different state vector and a different number of parameters, owing to the differences
 # in the LIF neuron as compared to the LI rate neuron. The state variable difference comes from the additional
 # state-variable :math:`s_i`, whereas the difference in the number of model parameters is caused by the synaptic time
 # constant :math:`\tau_s`.
 
 # %%
-# How to add an input layer to the network
-# ----------------------------------------
+# How to add a simple function node to the network
+# ------------------------------------------------
 #
-# Initializing a `rectipy.Network` instance as described above leads to a network with a single RNN layer.
-# After initialization, input and output layers can be added to the network. The code below shows how to add an input layer:
+# In addition to nodes that are based on differential equation systems, it is also possible to add nodes with instantaneous
+# activation functions. The code below shows how to add a node with the identity function (can be useful as input layers):
 
 m = 3
-net.add_input_layer(m)
+net.add_func_node("input", m, activation_function="identity")
 
 # %%
-# This code adds an input layer with 3 input units and initializes a random weight matrix to connect the ::math:`m` input units to
-# the :math:`N` RNN neurons. These weights can also be defined by the user:
+# To connect this node to an existing node, we can use the `Network.add_edge` method:
 
-net.remove_input_layer()
-net.add_input_layer(m, weights=np.random.randn(m, N))
+net.add_edge(source="input", target="lif")
 
 # %%
-# The input layer will automatically project its output to the variable which we declared as :code:`input_var` when we
-# called `Network.from_yaml`. Additional input that we feed into the network during a simulation or training procedure
-# will now be fed to the input layer units instead.
+# In this most simple case, a random set of weights will be drawn to map from the :math:`m = 3` input nodes to the :math:`N = 5` LIF neurons.
+# You can also specify weights yourself and pass them via the keyword argument :code:`weights`.
+# Let's add another function node and specify the weights explicitly:
 
-# %%
-# How to add an output layer to the network
-# -----------------------------------------
-#
-# It is also possible to add output layers to the network using a similar syntax:
-
+# add a node of sigmoid units
 k = 2
-net.add_edge(k, weights=np.random.randn(N, k), activation_function="sigmoid")
+net.add_func_node("output", k, activation_function="sigmoid")
 
-# %%
-# The keyword argument :code:`activation_function` is the only argument that differs from the input layer initialization.
-# It allows users to add a non-linear transform to activation of the output layer units. Have a look at the API of the
-# `Network.add_output_layer method <https://rectipy.readthedocs.io/en/latest/network.html>`_ for available options.
+# add an edge from the LIF population to the sigmoid node
+net.add_edge(source="lif", target="output", weights=np.random.randn(N, k))

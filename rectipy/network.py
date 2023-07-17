@@ -1087,6 +1087,7 @@ class FeedbackNetwork(Network):
         self._graph_fb = None
 
     def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        # TODO: Rework this method to implement forward pass through a recurrent network
         for i, layer in enumerate(self.graph):
             if i in self.feedback:
                 feedback_layer, out_idx = self.feedback[i]

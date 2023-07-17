@@ -174,7 +174,8 @@ class Network(Module):
         except KeyError:
             raise KeyError(f"Variable {var} was not found on node {node}.")
 
-    def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None) -> None:
+    def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None,
+                 **node_attrs) -> None:
         """Add node to the network, based on an instance from `rectipy.nodes`.
 
         Parameters
@@ -188,6 +189,8 @@ class Network(Module):
         op
             For differential equation-based nodes, an operator name can be passed that is used to identify variables on
             the node.
+        node_attrs
+            Additional keyword arguments passed to `networkx.DiGraph.add_node`.
 
         Returns
         -------
@@ -203,7 +206,8 @@ class Network(Module):
                 add_op_name(op, v, self._var_map)
 
         # add node to graph
-        self.graph.add_node(label, node=node, node_type=node_type, n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0)
+        self.graph.add_node(label, node=node, node_type=node_type, n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0,
+                            **node_attrs)
 
     def add_diffeq_node(self, label: str, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str,
                         output_var: str, weights: np.ndarray = None, source_var: str = None, target_var: str = None,
@@ -316,7 +320,8 @@ class Network(Module):
         return node
 
     def add_edge(self, source: str, target: str, weights: Union[torch.Tensor, np.ndarray] = None,
-                 train: Optional[str] = None, dtype: torch.dtype = torch.float64, **kwargs) -> Linear:
+                 train: Optional[str] = None, dtype: torch.dtype = torch.float64, edge_attrs: dict = None,
+                 **kwargs) -> Linear:
         """Add a feed-forward layer to the network.
 
         Parameters
@@ -335,6 +340,8 @@ class Network(Module):
             - 'rls' for recursive least squares training of the edge weights
         dtype
             Data type of the edge weights.
+        edge_attrs
+            Additional edge attributes passed to `networkx.DiGraph.add_edge`.
         kwargs
             Additional keyword arguments to be passed to the edge class initialization method.
 
@@ -361,7 +368,7 @@ class Network(Module):
 
         # add node to graph
         self.graph.add_edge(source, target, edge=edge.to(self.device), trainable=trainable, n_in=edge.n_in,
-                            n_out=edge.n_out)
+                            n_out=edge.n_out, **edge_attrs)
         return edge
 
     def pop_node(self, node: str) -> Union[ActivationFunction, RateNet]:
@@ -1083,55 +1090,65 @@ class FeedbackNetwork(Network):
     def __init__(self, dt: float, device: str = "cpu"):
 
         super().__init__(dt, device)
-        self._graph_ffwd = None
-        self._graph_fb = None
+        self._bwd_graph = None
+        self._fb_edges = []
 
     def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        # TODO: Rework this method to implement forward pass through a recurrent network
-        for i, layer in enumerate(self.graph):
-            if i in self.feedback:
-                feedback_layer, out_idx = self.feedback[i]
-                x += feedback_layer(self._outputs[out_idx])
-            x = layer(x)
-            if i in self._outputs:
-                self._outputs[i] = x
-        return x
+
+        # calculate feedback inputs
+        for source, target, edge in self._fb_edges:
+            s, t = self[source], self[target]
+            t["in"].append(s["out"])
+
+        # perform forward pass
+        return super().forward(x)
 
     def compile(self):
 
         # sort edges into feedback and feedforward edges
-        fb_edges = []
         ffwd_edges = []
         for edge in self.graph.edges:
             fb = self.graph[edge[0]][edge[1]].get("feedback")
             if fb:
-                fb_edges.append(edge)
+                self._fb_edges.append(edge)
             else:
                 ffwd_edges.append(edge)
 
-        # create subgraph views that contains only feedback vs. feedforward edges
-        self._graph_fb = self.graph.edge_subgraph(fb_edges)
-        self._graph_ffwd = self.graph.edge_subgraph(ffwd_edges)
+        # reduce graph to view that contains only feedforward edges
+        self.graph = self.graph.edge_subgraph(ffwd_edges)
 
-        # make sure that only a single input node exists
-        in_nodes = [n for n in self._graph_ffwd.nodes if self._graph_ffwd.in_degree(n) == 0]
-        if len(in_nodes) != 1:
-            raise ValueError(f"Unable to identify the input node of the Network. "
-                             f"Nodes that have no input edges: {in_nodes}."
-                             f"Make sure that exactly one such node without input edges exists in the network.")
-        self._in_node = in_nodes.pop()
+        # call super method
+        super().compile()
 
-        # make sure that only a single output node exists
-        out_nodes = [n for n in self._graph_ffwd.nodes if self._graph_ffwd.out_degree(n) == 0]
-        if len(out_nodes) != 1:
-            raise ValueError(f"Unable to identify the output node of the Network. "
-                             f"Nodes that have no outgoing edges: {out_nodes}."
-                             f"Make sure that exactly one such node without outgoing edges exists in the network.")
-        self._out_node = out_nodes.pop()
+    def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None,
+                 **node_attrs) -> None:
+        """Add node to the network, based on an instance from `rectipy.nodes`.
 
-    def add_edge(self, source: str, target: str, weights: np.ndarray = None,
-                 train: Optional[str] = None, feedback: bool = False, dtype: torch.dtype = torch.float64, **kwargs
-                 ) -> Linear:
+        Parameters
+        ----------
+        label
+            Name of the node in the network graph.
+        node
+            Instance of a class from `rectipy.nodes`.
+        node_type
+            Type of the node. Should be set to "diff_eq" for nodes that contain differential equations.
+        op
+            For differential equation-based nodes, an operator name can be passed that is used to identify variables on
+            the node.
+        node_attrs
+            Additional keyword arguments passed to `networkx.DiGraph.add_node`.
+
+        Returns
+        -------
+        None
+
+        """
+
+        super().add_node(label, node, node_type, op, inp=[], **node_attrs)
+
+    def add_edge(self, source: str, target: str, weights: Union[torch.Tensor, np.ndarray] = None,
+                 train: Optional[str] = None, feedback: bool = False, dtype: torch.dtype = torch.float64,
+                 edge_attrs: dict = None, **kwargs) -> Linear:
         """Add a feed-forward layer to the network.
 
         Parameters
@@ -1153,6 +1170,8 @@ class FeedbackNetwork(Network):
             connects the network input to its output.
         dtype
             Data type of the edge weights.
+        edge_attrs
+            Additional edge attributes passed to `networkx.DiGraph.add_edge`.
         kwargs
             Additional keyword arguments to be passed to the edge class initialization method.
 
@@ -1161,22 +1180,10 @@ class FeedbackNetwork(Network):
         Linear
             Instance of the edge class.
         """
+        edge_attrs["feedback"] = feedback
+        return super().add_edge(source, target, weights=weights, train=train, dtype=dtype, edge_attrs=edge_attrs,
+                                **kwargs)
 
-        # initialize output layer
-        kwargs.update({"n_in": self[source]["n_out"], "n_out": self[target]["n_in"],
-                       "weights": weights, "dtype": dtype})
-        trainable = True
-        if train is None:
-            trainable = False
-            edge = Linear(**kwargs, detach=True)
-        elif train == "gd":
-            edge = Linear(**kwargs, detach=False)
-        elif train == "rls":
-            edge = RLS(**kwargs)
-        else:
-            raise ValueError("Invalid option for keyword argument `train`. Please see the docstring of "
-                             "`Network.add_output_layer` for valid options.")
-
-        # add node to graph
-        self.graph.add_edge(source, target, edge=edge, trainable=trainable, feedback=feedback)
-        return edge
+    def _backward(self, x: Union[torch.Tensor, np.ndarray], n: str) -> torch.Tensor:
+        x += torch.sum(torch.tensor(self[n]["in"]), dim=0)
+        return super()._backward(x, n)

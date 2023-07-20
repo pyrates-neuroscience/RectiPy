@@ -23,7 +23,7 @@ net.add_diffeq_node("p2", node=neuron, input_var="I_ext", output_var="s", weight
 net.add_edge("p1", "p2", weights=k*np.random.rand(N, N), train=None)
 
 # add feedback edge from p2 to p1
-net.add_edge("p2", "p1", weights=-k*np.random.rand(N, N), feedback=True)
+net.add_edge("p2", "p1", weights=-10*k*np.random.rand(N, N), feedback=True)
 
 # perform simulation
 ####################

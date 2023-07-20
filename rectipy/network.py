@@ -1096,11 +1096,6 @@ class FeedbackNetwork(Network):
         self._bwd_graph = None
         self._fb_graph = None
 
-    def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-
-        # perform forward pass
-        return super().forward(x)
-
     def compile(self):
 
         # sort edges into feedback and feedforward edges
@@ -1113,7 +1108,7 @@ class FeedbackNetwork(Network):
                 ffwd_edges.append(edge)
 
         # reduce graph to view that contains only feedforward edges
-        g_fwd = self.graph.edge_subgraph(ffwd_edges)
+        g_fwd = DiGraph(self.graph.edge_subgraph(ffwd_edges))
         self._fb_graph = self.graph.edge_subgraph(fb_edges)
         self.graph = g_fwd
 
@@ -1162,7 +1157,15 @@ class FeedbackNetwork(Network):
 
     def _backward(self, x: Union[torch.Tensor, np.ndarray], n: str) -> torch.Tensor:
 
-        # calculate feedback inputs
+        # get feedforward input
+        if n in self._bwd_graph:
+            inp = self._bwd_graph[n]
+            if len(inp) == 1:
+                x = self._edge_forward(x, inp[0], n)
+            else:
+                x = torch.sum(torch.tensor([self._edge_forward(x, i, n) for i in inp]), dim=0)
+
+        # get feedback input
         if n in self._fb_graph:
             inputs = list(self._fb_graph.predecessors(n))
             n_in = len(inputs)
@@ -1173,8 +1176,13 @@ class FeedbackNetwork(Network):
             else:
                 x = x + torch.sum(torch.tensor([self._edge_bwd(i, n) for i in inputs]), dim=0)
 
-        # call super method
-        return super()._backward(x, n)
+        # calculate node output
+        node = self[n]
+        if node["eval"]:
+            node["out"] = node["node"].forward(x)
+            node["eval"] = False
+
+        return node["out"]
 
     def _edge_bwd(self, source: str, target: str):
         x = self.get_node(source)["out"]

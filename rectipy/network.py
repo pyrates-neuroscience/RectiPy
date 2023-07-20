@@ -206,8 +206,8 @@ class Network(Module):
                 add_op_name(op, v, self._var_map)
 
         # add node to graph
-        self.graph.add_node(label, node=node, node_type=node_type, n_out=node.n_out, n_in=node.n_in, eval=True, out=0.0,
-                            **node_attrs)
+        self.graph.add_node(label, node=node, node_type=node_type, n_out=node.n_out, n_in=node.n_in, eval=True,
+                            out=torch.zeros(node.n_out, device=self.device), **node_attrs)
 
     def add_diffeq_node(self, label: str, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str,
                         output_var: str, weights: np.ndarray = None, source_var: str = None, target_var: str = None,
@@ -351,7 +351,10 @@ class Network(Module):
             Instance of the edge class.
         """
 
-        # initialize output layer
+        if not edge_attrs:
+            edge_attrs = {}
+
+        # initialize edge
         kwargs.update({"n_in": self[source]["n_out"], "n_out": self[target]["n_in"],
                        "weights": weights, "dtype": dtype})
         trainable = True
@@ -366,7 +369,7 @@ class Network(Module):
             raise ValueError("Invalid option for keyword argument `train`. Please see the docstring of "
                              "`Network.add_output_layer` for valid options.")
 
-        # add node to graph
+        # add connecting edge to graph
         self.graph.add_edge(source, target, edge=edge.to(self.device), trainable=trainable, n_in=edge.n_in,
                             n_out=edge.n_out, **edge_attrs)
         return edge
@@ -1095,10 +1098,11 @@ class FeedbackNetwork(Network):
 
     def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
 
+        # TODO: Move the feedback operation to the backwards method. Do not loop over all feedback edges at very node.
         # calculate feedback inputs
         for source, target, edge in self._fb_edges:
-            s, t = self[source], self[target]
-            t["in"].append(s["out"])
+            x_in = self[source]["out"]
+            x = x + x_in
 
         # perform forward pass
         return super().forward(x)
@@ -1110,7 +1114,7 @@ class FeedbackNetwork(Network):
         for edge in self.graph.edges:
             fb = self.graph[edge[0]][edge[1]].get("feedback")
             if fb:
-                self._fb_edges.append(edge)
+                self._fb_edges.append((edge[0], edge[1], self.get_edge(edge[0], edge[1])))
             else:
                 ffwd_edges.append(edge)
 
@@ -1119,32 +1123,6 @@ class FeedbackNetwork(Network):
 
         # call super method
         super().compile()
-
-    def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None,
-                 **node_attrs) -> None:
-        """Add node to the network, based on an instance from `rectipy.nodes`.
-
-        Parameters
-        ----------
-        label
-            Name of the node in the network graph.
-        node
-            Instance of a class from `rectipy.nodes`.
-        node_type
-            Type of the node. Should be set to "diff_eq" for nodes that contain differential equations.
-        op
-            For differential equation-based nodes, an operator name can be passed that is used to identify variables on
-            the node.
-        node_attrs
-            Additional keyword arguments passed to `networkx.DiGraph.add_node`.
-
-        Returns
-        -------
-        None
-
-        """
-
-        super().add_node(label, node, node_type, op, inp=[], **node_attrs)
 
     def add_edge(self, source: str, target: str, weights: Union[torch.Tensor, np.ndarray] = None,
                  train: Optional[str] = None, feedback: bool = False, dtype: torch.dtype = torch.float64,
@@ -1180,10 +1158,8 @@ class FeedbackNetwork(Network):
         Linear
             Instance of the edge class.
         """
+        if not edge_attrs:
+            edge_attrs = {}
         edge_attrs["feedback"] = feedback
         return super().add_edge(source, target, weights=weights, train=train, dtype=dtype, edge_attrs=edge_attrs,
                                 **kwargs)
-
-    def _backward(self, x: Union[torch.Tensor, np.ndarray], n: str) -> torch.Tensor:
-        x += torch.sum(torch.tensor(self[n]["in"]), dim=0)
-        return super()._backward(x, n)

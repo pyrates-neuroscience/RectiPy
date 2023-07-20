@@ -31,6 +31,6 @@ __author__ = "Richard Gast"
 __status__ = "Development"
 __version__ = "0.10.3"
 
-from .network import Network, Observer
+from .network import Network, Observer, FeedbackNetwork
 from .utility import random_connectivity, circular_connectivity, input_connections, normalize
 from .utility import wta_score

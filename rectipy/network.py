@@ -1094,15 +1094,9 @@ class FeedbackNetwork(Network):
 
         super().__init__(dt, device)
         self._bwd_graph = None
-        self._fb_edges = []
+        self._fb_graph = None
 
     def forward(self, x: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-
-        # TODO: Move the feedback operation to the backwards method. Do not loop over all feedback edges at very node.
-        # calculate feedback inputs
-        for source, target, edge in self._fb_edges:
-            x_in = self[source]["out"]
-            x = x + x_in
 
         # perform forward pass
         return super().forward(x)
@@ -1110,16 +1104,18 @@ class FeedbackNetwork(Network):
     def compile(self):
 
         # sort edges into feedback and feedforward edges
-        ffwd_edges = []
+        ffwd_edges, fb_edges = [], []
         for edge in self.graph.edges:
             fb = self.graph[edge[0]][edge[1]].get("feedback")
             if fb:
-                self._fb_edges.append((edge[0], edge[1], self.get_edge(edge[0], edge[1])))
+                fb_edges.append(edge)
             else:
                 ffwd_edges.append(edge)
 
         # reduce graph to view that contains only feedforward edges
-        self.graph = self.graph.edge_subgraph(ffwd_edges)
+        g_fwd = self.graph.edge_subgraph(ffwd_edges)
+        self._fb_graph = self.graph.edge_subgraph(fb_edges)
+        self.graph = g_fwd
 
         # call super method
         super().compile()
@@ -1163,3 +1159,24 @@ class FeedbackNetwork(Network):
         edge_attrs["feedback"] = feedback
         return super().add_edge(source, target, weights=weights, train=train, dtype=dtype, edge_attrs=edge_attrs,
                                 **kwargs)
+
+    def _backward(self, x: Union[torch.Tensor, np.ndarray], n: str) -> torch.Tensor:
+
+        # calculate feedback inputs
+        if n in self._fb_graph:
+            inputs = list(self._fb_graph.predecessors(n))
+            n_in = len(inputs)
+            if n_in == 0:
+                pass
+            elif n_in == 1:
+                x = x + self._edge_bwd(inputs[0], n)
+            else:
+                x = x + torch.sum(torch.tensor([self._edge_bwd(i, n) for i in inputs]), dim=0)
+
+        # call super method
+        return super()._backward(x, n)
+
+    def _edge_bwd(self, source: str, target: str):
+        x = self.get_node(source)["out"]
+        edge = self._fb_graph[source][target]["edge"]
+        return edge.forward(x)

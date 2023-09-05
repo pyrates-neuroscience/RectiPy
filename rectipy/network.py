@@ -1,7 +1,7 @@
 import torch
 from networkx.classes.reportviews import NodeView
 from torch.nn import Module
-from typing import Union, Iterator, Callable, Tuple, Optional
+from typing import Union, Iterator, Callable, Tuple, Optional, List
 from .nodes import RateNet, SpikeNet, ActivationFunction
 from .edges import RLS, Linear
 from .utility import retrieve_from_dict, add_op_name
@@ -11,7 +11,6 @@ import numpy as np
 from time import perf_counter
 from networkx import DiGraph
 from multipledispatch import dispatch
-import gc
 
 
 class Network(Module):
@@ -570,16 +569,11 @@ class Network(Module):
                 if truncate_steps < steps and step % truncate_steps == truncate_steps-1:
                     self.detach()
 
-        # post-simulation clean up
-        del inputs
-        gc.collect()
-        torch.cuda.empty_cache()
-
         return obs
 
-    def fit_bptt(self, inputs: np.ndarray, targets: np.ndarray, optimizer: str = 'sgd', optimizer_kwargs: dict = None,
-                 loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3, sampling_steps: int = 1,
-                 update_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
+    def fit_bptt(self, inputs: Union[np.ndarray, list], targets: [np.ndarray, list], optimizer: str = 'sgd',
+                 optimizer_kwargs: dict = None, loss: str = 'mse', loss_kwargs: dict = None, lr: float = 1e-3,
+                 sampling_steps: int = 1, update_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         """Optimize model parameters via backpropagation through time.
 
         Parameters
@@ -632,13 +626,6 @@ class Network(Module):
         # preparations
         ##############
 
-        # transform inputs into tensors
-        inp_tensor = torch.tensor(inputs, device=self.device)
-        target_tensor = torch.tensor(targets, device=self.device)
-        if inp_tensor.shape[0] != target_tensor.shape[0]:
-            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
-                             '`targets` agree in the first dimension.')
-
         # compile network
         self.compile()
 
@@ -660,20 +647,33 @@ class Network(Module):
         ##############
 
         t0 = perf_counter()
-        if len(inp_tensor.shape) > 2:
-            obs = self._bptt_epochs(inp_tensor, target_tensor, loss=loss, optimizer=optimizer,
+        if type(inputs) is list:
+
+            # transform inputs and targets into tensors
+            if len(inputs) != len(targets):
+                raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                                 '`targets` agree in the first dimension (epochs).')
+
+            # perform optimization
+            obs = self._bptt_epochs(inputs, targets, loss=loss, optimizer=optimizer,
                                     obs=obs, error_kwargs=error_kwargs, step_kwargs=step_kwargs,
                                     sampling_steps=sampling_steps, verbose=verbose)
+
         else:
+
+            # transform inputs into tensors
+            inp_tensor = torch.tensor(inputs, device=self.device)
+            target_tensor = torch.tensor(targets, device=self.device)
+            if inp_tensor.shape[0] != target_tensor.shape[0]:
+                raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                                 '`targets` agree in the first dimension.')
+
+            # perform optimization
             obs = self._bptt(inp_tensor, target_tensor, loss, optimizer, obs, error_kwargs, step_kwargs,
                              sampling_steps=sampling_steps, optim_steps=update_steps, verbose=verbose)
+
         t1 = perf_counter()
         print(f'Finished optimization after {t1-t0} s.')
-
-        # post-simulation clean up
-        del inp_tensor, target_tensor
-        gc.collect()
-        torch.cuda.empty_cache()
 
         return obs
 
@@ -752,11 +752,6 @@ class Network(Module):
 
         obs.save("y", y)
         obs.save("w_out", w_out)
-
-        # post-simulation clean up
-        del inp_tensor, target_tensor
-        gc.collect()
-        torch.cuda.empty_cache()
 
         return obs
 
@@ -948,25 +943,23 @@ class Network(Module):
         for n in self:
             n["eval"] = True
 
-    def _bptt_epochs(self, inp: torch.Tensor, target: torch.Tensor, loss: Callable, optimizer: torch.optim.Optimizer,
-                     obs: Observer, error_kwargs: dict, step_kwargs: dict, sampling_steps: int = 1,
-                     verbose: bool = False, **kwargs) -> Observer:
-
-        if inp.shape[1] != target.shape[1]:
-            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
-                             '`targets` agree in the first dimension (epochs) and second dimension (steps per epoch).')
+    def _bptt_epochs(self, inp: list, target: list, loss: Callable,
+                     optimizer: torch.optim.Optimizer, obs: Observer, error_kwargs: dict, step_kwargs: dict,
+                     sampling_steps: int = 1, verbose: bool = False, **kwargs) -> Observer:
 
         y0 = self.state
-        epochs = inp.shape[0]
+        epochs = len(inp)
         epoch_losses = []
         for epoch in range(epochs):
 
             # simulate network dynamics
-            obs = self.run(inp[epoch], verbose=False, sampling_steps=sampling_steps, enable_grad=True, **kwargs)
+            obs = self.run(torch.tensor(inp[epoch], device=self.device), verbose=False, sampling_steps=sampling_steps,
+                           enable_grad=True, **kwargs)
 
             # perform gradient descent step
-            epoch_loss = self._bptt_step(torch.stack(obs["out"]), target[epoch], optimizer=optimizer, loss=loss,
-                                         error_kwargs=error_kwargs, step_kwargs=step_kwargs)
+            epoch_loss = self._bptt_step(torch.stack(obs["out"]), torch.tensor(target[epoch], device=self.device),
+                                         optimizer=optimizer, loss=loss, error_kwargs=error_kwargs,
+                                         step_kwargs=step_kwargs)
             epoch_losses.append(epoch_loss)
 
             # reset network
@@ -997,12 +990,13 @@ class Network(Module):
         for step in range(steps):
 
             # forward pass
-            predictions.append(self.forward(inp[step, :]))
+            pred = self.forward(inp[step, :])
+            predictions.append(pred)
 
             # gradient descent optimization step
             if step % optim_steps == optim_steps-1:
-                error = self._bptt_step(torch.stack(predictions), target[old_step:step+1], optimizer=optimizer, loss=loss,
-                                        error_kwargs=error_kwargs, step_kwargs=step_kwargs)
+                error = self._bptt_step(torch.stack(predictions), target[old_step:step+1], optimizer=optimizer,
+                                        loss=loss, error_kwargs=error_kwargs, step_kwargs=step_kwargs)
                 self.detach()
                 old_step = step+1
                 predictions.clear()
@@ -1011,7 +1005,7 @@ class Network(Module):
             if step % sampling_steps == 0:
                 if verbose:
                     print(f'Progress: {step}/{steps} training steps finished. Current loss: {error}.')
-                obs.record(step, predictions[-1], error, [self[v] for v in rec_vars])
+                obs.record(step, pred, error, [self[v] for v in rec_vars])
 
         return obs
 

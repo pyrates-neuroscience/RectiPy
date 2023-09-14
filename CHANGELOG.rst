@@ -4,6 +4,11 @@ Changelog
 0.10
 ----
 
+0.10.4
+------
+
+- updated readthedocs configuration
+
 0.10.3
 ------
 

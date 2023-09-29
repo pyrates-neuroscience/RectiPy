@@ -70,7 +70,7 @@ class RLS(Linear):
     _tensors = ["weights", "P"]
 
     def __init__(self, n_in: int, n_out: int, weights: Union[np.ndarray, torch.Tensor] = None,
-                 dtype: torch.dtype = torch.float64, beta: float = 1.0, alpha: float = 1.0, delta: float = 1.0):
+                 dtype: torch.dtype = torch.float64, beta: float = 1.0, alpha: float = 1.0):
         """General form of the extended recursive least-squares algorithm as described in [1]_. Can be used to implement
         readout weight learning as in
 
@@ -89,8 +89,6 @@ class RLS(Linear):
             observations over past observations.
         alpha
             Regularization parameter for the initial state of the state-error correlation matrix `P`.
-        delta
-            Additional scalar > 0 for weighting the updates of the weight matrix and the covariance matrix of
 
         References
         ----------

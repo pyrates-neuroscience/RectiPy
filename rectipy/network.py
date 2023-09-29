@@ -1,7 +1,7 @@
 import torch
 from networkx.classes.reportviews import NodeView
 from torch.nn import Module
-from typing import Union, Iterator, Callable, Tuple, Optional, List
+from typing import Union, Iterator, Callable, Tuple, Optional
 from .nodes import RateNet, SpikeNet, ActivationFunction
 from .edges import RLS, Linear
 from .utility import retrieve_from_dict, add_op_name
@@ -40,6 +40,7 @@ class Network(Module):
         self._in_node = None
         self._out_node = None
         self._bwd_graph = {}
+        self._train_edge = ()
 
     @dispatch(str)
     def __getitem__(self, item: str):
@@ -364,6 +365,7 @@ class Network(Module):
             edge = Linear(**kwargs, detach=False)
         elif train == "rls":
             edge = RLS(**kwargs)
+            self._train_edge = (source, target)
         else:
             raise ValueError("Invalid option for keyword argument `train`. Please see the docstring of "
                              "`Network.add_output_layer` for valid options.")
@@ -755,8 +757,8 @@ class Network(Module):
 
         return obs
 
-    def fit_rls(self, inputs: np.ndarray, targets: np.ndarray, feedback_weights: np.ndarray = None,
-                update_steps: int = 1, sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
+    def fit_rls(self, inputs: np.ndarray, targets: np.ndarray, optim_steps: int = 1000, sampling_steps: int = 100,
+                verbose: bool = True, **kwargs) -> Observer:
         r"""Finds model parameters $w$ such that $||Xw - y||_2$ is minimized, where $X$ contains the neural activity and
         $y$ contains the targets.
 
@@ -768,10 +770,7 @@ class Network(Module):
         targets
             `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
             network.
-        feedback_weights
-            `m x k` array of synaptic weights. If provided, a feedback connections is established with these weights,
-            that projects the network output back to the RNN layer.
-        update_steps
+        optim_steps
             Each `update_steps` an update of the trainable parameters will be performed.
         sampling_steps
             Number of training steps at which to record observables.
@@ -786,8 +785,6 @@ class Network(Module):
             Instance of the `observer`.
         """
 
-        # TODO: implement RLS training
-
         # preparations
         ##############
 
@@ -800,11 +797,8 @@ class Network(Module):
         inp_tensor = torch.tensor(inputs, device=self.device)
         target_tensor = torch.tensor(targets, device=self.device)
 
-        # set up model
-        if self.output_layer is None:
-            self.add_edge(n=targets.shape[1], train="rls", **kwargs)
-        if self._model is None:
-            self.compile()
+        # compile network
+        self.compile()
 
         # initialize observer
         obs_kwargs = retrieve_from_dict(['record_output', 'record_loss', 'record_vars'], kwargs)
@@ -815,13 +809,8 @@ class Network(Module):
         ##############
 
         t0 = perf_counter()
-        if feedback_weights is None:
-            obs = self._train_nofb(inp_tensor, target_tensor, obs, rec_vars, update_steps=update_steps,
-                                   sampling_steps=sampling_steps, verbose=verbose, **kwargs)
-        else:
-            W_fb = torch.tensor(feedback_weights, device=self.device)
-            obs = self._train_fb(inp_tensor, target_tensor, W_fb, obs, rec_vars, update_steps=update_steps,
-                                 sampling_steps=sampling_steps, verbose=verbose, **kwargs)
+        obs = self._rls(inp_tensor, target_tensor, obs, optim_steps=optim_steps, sampling_steps=sampling_steps,
+                        verbose=verbose, **kwargs)
         t1 = perf_counter()
         print(f'Finished optimization after {t1 - t0} s.')
         return obs
@@ -1009,6 +998,37 @@ class Network(Module):
 
         return obs
 
+    def _rls(self, inp: torch.Tensor, target: torch.Tensor, obs: Observer,
+             sampling_steps: int = 100, optim_steps: int = 1000, verbose: bool = False, **kwargs) -> Observer:
+
+        # preparations
+        rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
+        steps = inp.shape[0]
+        rls_edge = self.get_edge(self._train_edge[0], self._train_edge[1])
+        rls_source = self.get_node(self._train_edge[0])
+        rls_target = self.get_node(self._train_edge[1])
+        error = 0.0
+
+        # optimization loop
+        for step in range(steps):
+
+            # forward pass
+            pred = self.forward(inp[step, :])
+
+            # update
+            if step % optim_steps == 0:
+                rls_edge.update(rls_source["out"], rls_target["out"], target[step, :])
+                error = rls_edge.loss
+
+            # recording
+            if step % sampling_steps == 0:
+                if verbose:
+                    print(f'Progress: {step}/{steps} training steps finished. Current loss: {error}.')
+                obs.record(step, pred, error, [self[v] for v in rec_vars])
+
+        return obs
+
+        # preparations
     @staticmethod
     def _bptt_step(predictions: torch.Tensor, targets: torch.Tensor, optimizer: torch.optim.Optimizer,
                    loss: Callable, error_kwargs: dict, step_kwargs: dict) -> float:

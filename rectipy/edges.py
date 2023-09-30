@@ -110,10 +110,7 @@ class RLS(Linear):
         # call super method
         super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=True)
 
-    def update(self, x: torch.Tensor, y_hat: torch.Tensor, y: torch.Tensor) -> None:
-
-        # calculate current error
-        err = y - y_hat
+    def update(self, x: torch.Tensor, error: torch.Tensor) -> None:
 
         # calculate gain
         k = self.P @ x
@@ -124,7 +121,7 @@ class RLS(Linear):
         self.P /= self.beta
 
         # update the weights
-        self.weights.add_(torch.outer(err, self.P @ x))
+        self.weights.add_(torch.outer(error, self.P @ x))
 
         # update loss
-        self.loss = torch.inner(err, err)
+        self.loss = torch.inner(error, error)

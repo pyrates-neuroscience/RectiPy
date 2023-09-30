@@ -40,6 +40,9 @@ class ActivationFunction:
         self.n_out = n
         self.func = func(**kwargs)
 
+    def __getitem__(self, item):
+        pass
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.func.forward(x)
 

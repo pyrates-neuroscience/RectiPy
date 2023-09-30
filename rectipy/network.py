@@ -713,9 +713,8 @@ class Network(Module):
         ##############
 
         # transform inputs into tensors
-        inp_tensor = torch.tensor(inputs, device=self.device)
         target_tensor = torch.tensor(targets, device=self.device)
-        if inp_tensor.shape[0] != target_tensor.shape[0]:
+        if inputs.shape[0] != target_tensor.shape[0]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension.')
 
@@ -738,7 +737,7 @@ class Network(Module):
         # ridge regression formula
         X = torch.stack(obs["out"])
         X_t = X.T
-        w_out = torch.inverse(X_t @ X + alpha*torch.eye(X.shape[1])) @ X_t @ targets
+        w_out = torch.inverse(X_t @ X + alpha*torch.eye(X.shape[1])) @ X_t @ target_tensor
         y = X @ w_out
 
         # progress report
@@ -757,8 +756,8 @@ class Network(Module):
 
         return obs
 
-    def fit_rls(self, inputs: np.ndarray, targets: np.ndarray, optim_steps: int = 1000, sampling_steps: int = 100,
-                verbose: bool = True, **kwargs) -> Observer:
+    def fit_rls(self, inputs: Union[list, np.ndarray], targets: Union[list, np.ndarray], update_steps: int = 1000,
+                sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         r"""Finds model parameters $w$ such that $||Xw - y||_2$ is minimized, where $X$ contains the neural activity and
         $y$ contains the targets.
 
@@ -770,7 +769,7 @@ class Network(Module):
         targets
             `T x k` array of targets, where `T` is the number of training steps and `k` is the number of outputs of the
             network.
-        optim_steps
+        update_steps
             Each `update_steps` an update of the trainable parameters will be performed.
         sampling_steps
             Number of training steps at which to record observables.
@@ -788,15 +787,6 @@ class Network(Module):
         # preparations
         ##############
 
-        # test correct dimensionality of inputs
-        if inputs.shape[0] != targets.shape[0]:
-            raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
-                             '`targets` agree in the first dimension.')
-
-        # transform inputs into tensors
-        inp_tensor = torch.tensor(inputs, device=self.device)
-        target_tensor = torch.tensor(targets, device=self.device)
-
         # compile network
         self.compile()
 
@@ -809,8 +799,31 @@ class Network(Module):
         ##############
 
         t0 = perf_counter()
-        obs = self._rls(inp_tensor, target_tensor, obs, optim_steps=optim_steps, sampling_steps=sampling_steps,
-                        verbose=verbose, **kwargs)
+        if type(inputs) is list:
+
+            # check input and target dimensions
+            if len(inputs) != len(targets):
+                raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                                 '`targets` agree in the first dimension (epochs).')
+
+            # fit weights
+            obs = self._rls_epoch(inputs, targets, obs, verbose=verbose, **kwargs)
+
+        else:
+
+            # test correct dimensionality of inputs
+            if inputs.shape[0] != targets.shape[0]:
+                raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
+                                 '`targets` agree in the first dimension.')
+
+            # transform inputs into tensors
+            inp_tensor = torch.tensor(inputs, device=self.device)
+            target_tensor = torch.tensor(targets, device=self.device)
+
+            # fit weights
+            obs = self._rls(inp_tensor, target_tensor, obs, optim_steps=update_steps, sampling_steps=sampling_steps,
+                            verbose=verbose, **kwargs)
+
         t1 = perf_counter()
         print(f'Finished optimization after {t1 - t0} s.')
         return obs
@@ -953,6 +966,7 @@ class Network(Module):
 
             # reset network
             self.reset(y0)
+            torch.cuda.empty_cache()
 
             # display progress
             if verbose:
@@ -998,16 +1012,65 @@ class Network(Module):
 
         return obs
 
-    def _rls(self, inp: torch.Tensor, target: torch.Tensor, obs: Observer,
-             sampling_steps: int = 100, optim_steps: int = 1000, verbose: bool = False, **kwargs) -> Observer:
+    def _rls_epoch(self, inp: list, target: list, obs: Observer, alpha: float = 0.9, verbose: bool = False
+                   ) -> Observer:
+
+        # preparations
+        rls_edge = self.get_edge(self._train_edge[0], self._train_edge[1])
+        rls_source = self[self._train_edge[0]]
+        rls_target = self[self._train_edge[1]]
+        y0 = self.state
+        epochs = len(inp)
+        epoch_losses = []
+
+        # fitting
+        for epoch in range(epochs):
+
+            # reset error
+            error = 1.0
+
+            # turn input and target into tensors
+            inp_tmp = torch.tensor(inp[epoch], device=self.device)
+            target_tmp = torch.tensor(target[epoch], device=self.device)
+
+            #  optimization loop
+            for step in range(inp_tmp.shape[0]):
+
+                # forward pass
+                self.forward(inp_tmp[step, :])
+
+                # update error
+                error = error*alpha + (rls_target["out"] - target_tmp[step, :])*(1 - alpha)
+
+            # perform rls optimization step
+            rls_edge.update(rls_source["out"], error)
+            epoch_losses.append(rls_edge.loss)
+
+            # reset network
+            self.reset(y0)
+            torch.cuda.empty_cache()
+
+            # display progress
+            if verbose:
+                print(f'Progress: {epoch + 1}/{epochs} training epochs finished.')
+                print(f'Epoch loss: {epoch_losses[-1]}.')
+                print('')
+
+        obs.save("epoch_loss", epoch_losses)
+        obs.save("epochs", np.arange(epochs))
+        return obs
+
+    def _rls(self, inp: torch.Tensor, target: torch.Tensor, obs: Observer, alpha: float = 0.9,
+             sampling_steps: int = 100, optim_steps: int = 1000, verbose: bool = False) -> Observer:
 
         # preparations
         rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
         steps = inp.shape[0]
         rls_edge = self.get_edge(self._train_edge[0], self._train_edge[1])
-        rls_source = self.get_node(self._train_edge[0])
-        rls_target = self.get_node(self._train_edge[1])
-        error = 0.0
+        rls_source = self[self._train_edge[0]]
+        rls_target = self[self._train_edge[1]]
+        error = 1.0
+        loss = 0.0
 
         # optimization loop
         for step in range(steps):
@@ -1016,19 +1079,19 @@ class Network(Module):
             pred = self.forward(inp[step, :])
 
             # update
+            error = error*alpha + (rls_target["out"] - target[step, :])*(1 - alpha)
             if step % optim_steps == 0:
-                rls_edge.update(rls_source["out"], rls_target["out"], target[step, :])
-                error = rls_edge.loss
+                rls_edge.update(rls_source["out"], error)
+                loss = rls_edge.loss
 
             # recording
             if step % sampling_steps == 0:
                 if verbose:
-                    print(f'Progress: {step}/{steps} training steps finished. Current loss: {error}.')
-                obs.record(step, pred, error, [self[v] for v in rec_vars])
+                    print(f'Progress: {step}/{steps} training steps finished. Current loss: {loss}.')
+                obs.record(step, pred, loss, [self[v] for v in rec_vars])
 
         return obs
 
-        # preparations
     @staticmethod
     def _bptt_step(predictions: torch.Tensor, targets: torch.Tensor, optimizer: torch.optim.Optimizer,
                    loss: Callable, error_kwargs: dict, step_kwargs: dict) -> float:

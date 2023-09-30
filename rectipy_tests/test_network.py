@@ -310,12 +310,12 @@ def test_3_6_simulation():
     # network initialization
     net1, net2, net3 = Network(dt=dt), Network(dt=dt), Network(dt=dt)
     net1.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                         target_var=t_var, clear=True, verbose=False, file_name="net1", dtype=torch.float64)
+                         target_var=t_var, file_name="net1", dtype=torch.float64)
     net2.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                         target_var=t_var, clear=True, verbose=False, file_name="net2", dtype=torch.float64,
+                         target_var=t_var, file_name="net2", dtype=torch.float64,
                          record_vars=['li_op/v'])
     net3.add_diffeq_node("rnn", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                         target_var=t_var, clear=True, verbose=False, file_name="net3", dtype=torch.float64,
+                         target_var=t_var, file_name="net3", dtype=torch.float64,
                          record_vars=['li_op/v']
                          )
     net3.compile()
@@ -341,4 +341,78 @@ def test_3_7_optimization():
     """Tests optimization functions of Network class.
     """
 
-    pass
+    # preparations
+    ##############
+
+    # rnn parameters
+    dt = 1e-2
+    n = 10
+    n_out = 3
+    steps = 100
+    W = np.random.randn(n, n)
+    W_out = np.random.randn(n_out, n)
+    x = np.random.randn(steps, n)
+    node = "neuron_model_templates.rate_neurons.leaky_integrator.tanh"
+    in_var = "li_op/I_ext"
+    out_var = "tanh_op/r"
+    s_var = "tanh_op/r"
+    t_var = "li_op/r_in"
+
+    # forward simulation of target dynamics
+    net = Network(dt, device="cpu")
+    net.add_diffeq_node("rnn", node, input_var=in_var, output_var=out_var, weights=W, source_var=s_var,
+                        target_var=t_var)
+    net.add_func_node("output", n_out, "identity")
+    net.add_edge("rnn", "output", weights=W_out, train=None)
+    y0 = net.state
+    obs = net.run(x, sampling_steps=1, enable_grad=False, verbose=False)
+    target = obs.to_numpy("out")
+
+    # fit readout weights via different optimization mechanisms
+    ###########################################################
+
+    n_epochs = 1000
+    input_epochs = [x for _ in range(n_epochs)]
+    target_epochs = [target for _ in range(n_epochs)]
+
+    # fit readout weights via bptt
+    net.pop_edge("rnn", "output")
+    net.add_edge("rnn", "output", weights=np.random.randn(n_out, n), train="gd")
+    net.reset(y0)
+    net.fit_bptt(input_epochs, target_epochs, sampling_steps=1, verbose=False, lr=0.1, optimizer="adam")
+    bptt_weights = net.get_edge("rnn", "output").weights.detach().numpy()
+
+    # fit readout weights via rls
+    net.pop_edge("rnn", "output")
+    net.add_edge("rnn", "output", weights=np.random.randn(n_out, n), train="rls")
+    net.reset(y0)
+    net.fit_rls(input_epochs, target_epochs, verbose=False, alpha=0.5)
+    rls_weights = net.get_edge("rnn", "output").weights.detach().numpy()
+
+    # fit readout weights via ridge regression
+    net.reset(y0)
+    net.pop_node("output")
+    obs_ridge = net.fit_ridge(x, target, sampling_steps=1, add_readout_node=False, verbose=False, alpha=0.0)
+    ridge_weights = obs_ridge.to_numpy("w_out").T
+
+    # testing
+    #########
+
+    # import matplotlib.pyplot as plt
+    # fig, axes = plt.subplots(ncols=2)
+    # ax = axes[0]
+    # ax.imshow(W_out, aspect="auto")
+    # ax.set_title("target")
+    # ax = axes[1]
+    # ax.imshow(rls_weights, aspect="auto")
+    # ax.set_title("fit")
+    # plt.show()
+
+    # test bppt fit
+    assert np.mean((W_out - bptt_weights)**2) == pytest.approx(0.0, 1e-1, 1e-1)
+
+    # test rls fit
+    # assert np.mean((W_out - rls_weights) ** 2) == pytest.approx(0.0, 1e-1, 1e-1)
+
+    # test ridge fit
+    assert np.mean((W_out - ridge_weights) ** 2) == pytest.approx(0.0, 1e-1, 1e-1)

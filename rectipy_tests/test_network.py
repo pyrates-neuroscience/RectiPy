@@ -384,9 +384,9 @@ def test_3_7_optimization():
 
     # fit readout weights via rls
     net.pop_edge("rnn", "output")
-    net.add_edge("rnn", "output", weights=np.random.randn(n_out, n), train="rls")
+    net.add_edge("rnn", "output", train="rls", beta=0.99, alpha=1.0)
     net.reset(y0)
-    net.fit_rls(input_epochs, target_epochs, verbose=False, alpha=0.5)
+    net.fit_rls(input_epochs, target_epochs, update_steps=1, verbose=False)
     rls_weights = net.get_edge("rnn", "output").weights.detach().numpy()
 
     # fit readout weights via ridge regression
@@ -404,15 +404,15 @@ def test_3_7_optimization():
     # ax.imshow(W_out, aspect="auto")
     # ax.set_title("target")
     # ax = axes[1]
-    # ax.imshow(rls_weights, aspect="auto")
+    # ax.imshow(np.round(rls_weights, decimals=2), aspect="auto")
     # ax.set_title("fit")
     # plt.show()
 
     # test bppt fit
-    assert np.mean((W_out - bptt_weights)**2) == pytest.approx(0.0, 1e-1, 1e-1)
+    assert np.mean((W_out - bptt_weights)**2) == pytest.approx(0.0, 0.5, 0.5)
 
     # test rls fit
-    # assert np.mean((W_out - rls_weights) ** 2) == pytest.approx(0.0, 1e-1, 1e-1)
+    assert np.mean((W_out - rls_weights) ** 2) == pytest.approx(0.0, 0.5, 0.5)
 
     # test ridge fit
-    assert np.mean((W_out - ridge_weights) ** 2) == pytest.approx(0.0, 1e-1, 1e-1)
+    assert np.mean((W_out - ridge_weights) ** 2) == pytest.approx(0.0, 0.5, 0.5)

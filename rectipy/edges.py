@@ -102,26 +102,23 @@ class RLS(Linear):
         if alpha < 0:
             raise ValueError("Parameter alpha should be a positive scalar.")
 
+        # initialize zero weights by default
+        if weights is None:
+            weights = torch.zeros((n_out, n_in), dtype=dtype)
+
         # set RLS-specific attributes
-        self.beta = beta
+        self.beta = beta**(-1)
         self.P = alpha * torch.eye(n_in, dtype=dtype)
         self.loss = 0.0
 
         # call super method
         super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=True)
 
-    def update(self, x: torch.Tensor, error: torch.Tensor) -> None:
+    def update(self, x: torch.Tensor, y: torch.Tensor, y_hat: torch.Tensor) -> None:
 
-        # calculate gain
-        k = self.P @ x
-        k /= self.beta + x @ k
-
-        # update the error correlation matrix
-        self.P.add_(-torch.outer(k, x @ self.P))
-        self.P /= self.beta
-
-        # update the weights
-        self.weights.add_(torch.outer(error, self.P @ x))
-
-        # update loss
+        z = self.beta * self.P @ x
+        k = (1.0 + x @ z) ** (-1)
+        error = y - y_hat
+        self.weights += torch.outer((y - k * x @ (self.weights + torch.outer(y, z)).T), z)
+        self.P -= k * torch.outer(z, z)
         self.loss = torch.inner(error, error)

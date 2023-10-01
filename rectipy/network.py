@@ -756,7 +756,7 @@ class Network(Module):
 
         return obs
 
-    def fit_rls(self, inputs: Union[list, np.ndarray], targets: Union[list, np.ndarray], update_steps: int = 1000,
+    def fit_rls(self, inputs: Union[list, np.ndarray], targets: Union[list, np.ndarray], update_steps: int = 1,
                 sampling_steps: int = 100, verbose: bool = True, **kwargs) -> Observer:
         r"""Finds model parameters $w$ such that $||Xw - y||_2$ is minimized, where $X$ contains the neural activity and
         $y$ contains the targets.
@@ -807,7 +807,7 @@ class Network(Module):
                                  '`targets` agree in the first dimension (epochs).')
 
             # fit weights
-            obs = self._rls_epoch(inputs, targets, obs, verbose=verbose, **kwargs)
+            obs = self._rls_epoch(inputs, targets, obs, optim_steps=update_steps, verbose=verbose)
 
         else:
 
@@ -822,7 +822,7 @@ class Network(Module):
 
             # fit weights
             obs = self._rls(inp_tensor, target_tensor, obs, optim_steps=update_steps, sampling_steps=sampling_steps,
-                            verbose=verbose, **kwargs)
+                            verbose=verbose)
 
         t1 = perf_counter()
         print(f'Finished optimization after {t1 - t0} s.')
@@ -1012,7 +1012,7 @@ class Network(Module):
 
         return obs
 
-    def _rls_epoch(self, inp: list, target: list, obs: Observer, alpha: float = 0.9, verbose: bool = False
+    def _rls_epoch(self, inp: list, target: list, obs: Observer, optim_steps: int = 1, verbose: bool = False
                    ) -> Observer:
 
         # preparations
@@ -1026,9 +1026,6 @@ class Network(Module):
         # fitting
         for epoch in range(epochs):
 
-            # reset error
-            error = 1.0
-
             # turn input and target into tensors
             inp_tmp = torch.tensor(inp[epoch], device=self.device)
             target_tmp = torch.tensor(target[epoch], device=self.device)
@@ -1039,12 +1036,10 @@ class Network(Module):
                 # forward pass
                 self.forward(inp_tmp[step, :])
 
-                # update error
-                error = error*alpha + (rls_target["out"] - target_tmp[step, :])*(1 - alpha)
-
-            # perform rls optimization step
-            rls_edge.update(rls_source["out"], error)
-            epoch_losses.append(rls_edge.loss)
+                # RLS update
+                if step % optim_steps == 0:
+                    rls_edge.update(rls_source["out"], target_tmp[step, :], rls_target["out"])
+                    loss = rls_edge.loss
 
             # reset network
             self.reset(y0)
@@ -1060,8 +1055,8 @@ class Network(Module):
         obs.save("epochs", np.arange(epochs))
         return obs
 
-    def _rls(self, inp: torch.Tensor, target: torch.Tensor, obs: Observer, alpha: float = 0.9,
-             sampling_steps: int = 100, optim_steps: int = 1000, verbose: bool = False) -> Observer:
+    def _rls(self, inp: torch.Tensor, target: torch.Tensor, obs: Observer, sampling_steps: int = 100,
+             optim_steps: int = 1, verbose: bool = False) -> Observer:
 
         # preparations
         rec_vars = [self._relabel_var(v) for v in obs.recorded_state_variables]
@@ -1069,7 +1064,6 @@ class Network(Module):
         rls_edge = self.get_edge(self._train_edge[0], self._train_edge[1])
         rls_source = self[self._train_edge[0]]
         rls_target = self[self._train_edge[1]]
-        error = 1.0
         loss = 0.0
 
         # optimization loop
@@ -1079,9 +1073,8 @@ class Network(Module):
             pred = self.forward(inp[step, :])
 
             # update
-            error = error*alpha + (rls_target["out"] - target[step, :])*(1 - alpha)
             if step % optim_steps == 0:
-                rls_edge.update(rls_source["out"], error)
+                rls_edge.update(rls_source["out"], target[step, :], rls_target["out"])
                 loss = rls_edge.loss
 
             # recording

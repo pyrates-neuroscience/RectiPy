@@ -1,13 +1,21 @@
 Changelog
 =========
 
-0.10
+0.11
 ----
 
-0.10.4
+0.11.0
 ------
 
-- updated readthedocs configuration
+- added a class `FeedbackNetwork` that allows to add feedback connections between nodes in a network. Intended use: First, build the feedforward network structure that maps from input to output. Then add feedback edges, marking them via the keyword argument `feedback=True` of the `FeedbackNetwork.add_edge` method.
+- both feedforward and feedback edges can be trained
+- Re-worked the backpropagation through time and recursive least squares training methods to work with feedback weights
+- updated the readthedocs documentation
+- added new pytests for the different optimization methods: Ridge regression, backpropagation, and recursive least squares
+- added a class `MultiSpikeNode` that allows to define multiple spiking variables within a single differential equation-based node.
+
+0.10
+----
 
 0.10.3
 ------

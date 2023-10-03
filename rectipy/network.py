@@ -211,8 +211,8 @@ class Network(Module):
 
     def add_diffeq_node(self, label: str, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str,
                         output_var: str, weights: np.ndarray = None, source_var: str = None, target_var: str = None,
-                        spike_var: str = None, spike_def: str = None, op: str = None, train_params: list = None,
-                        **kwargs) -> RateNet:
+                        spike_var: Union[str, list] = None, spike_def: Union[str, list] = None, op: str = None,
+                        train_params: list = None, **kwargs) -> RateNet:
         """Adds a differential equation-based RNN node to the `Network` instance.
 
         Parameters
@@ -258,7 +258,10 @@ class Network(Module):
         self._var_map = {}
         if op is not None:
             for key, var in var_dict.copy().items():
-                var_dict[key] = add_op_name(op, var, self._var_map)
+                if type(var) is list:
+                    var_dict[key] = [add_op_name(op, v, self._var_map) for v in var]
+                else:
+                    var_dict[key] = add_op_name(op, var, self._var_map)
             if train_params:
                 train_params = [add_op_name(op, p, self._var_map) for p in train_params]
             if "node_vars" in kwargs:

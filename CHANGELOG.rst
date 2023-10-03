@@ -4,6 +4,11 @@ Changelog
 0.11
 ----
 
+0.11.1
+------
+
+- updated readthedocs configuration file
+
 0.11.0
 ------
 

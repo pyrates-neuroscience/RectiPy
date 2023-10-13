@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.nodes import RateNet, SpikeNet, ActivationFunction
+from rectipy.nodes import RateNet, SpikeNet, InstantNode
 from rectipy.edges import Linear, RLS
 from rectipy import Network
 import torch
@@ -121,9 +121,9 @@ def test_3_2_function_nodes():
     net.add_func_node("identity", m, activation_function="softmax")
 
     # these tests should pass
-    assert isinstance(net.get_node("softmax"), ActivationFunction)
-    assert isinstance(net.get_node("sigmoid"), ActivationFunction)
-    assert isinstance(net["softmax"]["node"], ActivationFunction)
+    assert isinstance(net.get_node("softmax"), InstantNode)
+    assert isinstance(net.get_node("sigmoid"), InstantNode)
+    assert isinstance(net["softmax"]["node"], InstantNode)
     assert net.get_node("sigmoid").forward(x).shape[0] == m
     assert net.get_node("softmax").forward(x).dtype == torch.float32
     assert net.get_node("softmax").forward(y).dtype == torch.float64

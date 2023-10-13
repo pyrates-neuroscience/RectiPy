@@ -54,7 +54,8 @@ learner_net.compile()
 # define training parameters
 T = 100.0
 steps = int(T/dt)
-epochs = 5000
+epochs = 1000
+epsilon = 1.0
 inputs = torch.zeros((steps, n_in), dtype=dtype, device=device)
 omegas = [0.03, 0.05]
 time = torch.linspace(0, T, steps=steps)
@@ -67,7 +68,7 @@ loss_fn = nn.MSELoss()
 obs = net.run(inputs, sampling_steps=1, enable_grad=False, verbose=False)
 targets = torch.stack(obs["out"])
 
-# get initial dynamics of learnet network
+# get initial dynamics of learner network
 obs_learner = learner_net.run(inputs, sampling_steps=1, enable_grad=False, verbose=False)
 predictions_init = obs_learner.to_numpy("out")
 
@@ -91,6 +92,10 @@ for epoch in range(epochs):
     # save stuff for plotting
     loss_hist.append(loss.item())
     print(f"Epoch #{epoch} finished. Current loss = {loss_hist[-1]}")
+
+    # convergence criterion
+    if loss_hist[-1] < epsilon:
+        break
 
 # extract fitted weights of learner network
 J_1 = learner_net.get_var("lif", "weights").detach().cpu().numpy()

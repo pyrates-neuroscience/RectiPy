@@ -2,7 +2,7 @@ import torch
 from networkx.classes.reportviews import NodeView
 from torch.nn import Module
 from typing import Union, Iterator, Callable, Tuple, Optional
-from .nodes import RateNet, SpikeNet, ActivationFunction
+from .nodes import RateNet, SpikeNet, InstantNode
 from .edges import RLS, Linear
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
@@ -96,7 +96,7 @@ class Network(Module):
                 pass
         return states
 
-    def get_node(self, node: str) -> Union[ActivationFunction, RateNet]:
+    def get_node(self, node: str) -> Union[InstantNode, RateNet]:
         """Returns node instance from the network.
 
         Parameters
@@ -106,7 +106,7 @@ class Network(Module):
 
         Returns
         -------
-        Union[ActivationFunction, RateNet]
+        Union[InstantNode, RateNet]
             Instance of a node class.
         """
         return self[node]["node"]
@@ -174,7 +174,7 @@ class Network(Module):
         except KeyError:
             raise KeyError(f"Variable {var} was not found on node {node}.")
 
-    def add_node(self, label: str, node: Union[ActivationFunction, RateNet], node_type: str, op: str = None,
+    def add_node(self, label: str, node: Union[InstantNode, RateNet], node_type: str, op: str = None,
                  **node_attrs) -> None:
         """Add node to the network, based on an instance from `rectipy.nodes`.
 
@@ -290,7 +290,7 @@ class Network(Module):
 
         return node
 
-    def add_func_node(self, label: str, n: int, activation_function: str, **kwargs) -> ActivationFunction:
+    def add_func_node(self, label: str, n: int, activation_function: str, **kwargs) -> InstantNode:
         """Add an activation function as a node to the network (no intrinsic dynamics, just an input-output mapping).
 
         Parameters
@@ -315,7 +315,7 @@ class Network(Module):
         """
 
         # create node instance
-        node = ActivationFunction(n, activation_function, **kwargs)
+        node = InstantNode(n, activation_function, **kwargs)
 
         # add node to the network graph
         self.add_node(label, node=node, node_type="diff_eq")
@@ -378,7 +378,7 @@ class Network(Module):
                             n_out=edge.n_out, **edge_attrs)
         return edge
 
-    def pop_node(self, node: str) -> Union[ActivationFunction, RateNet]:
+    def pop_node(self, node: str) -> Union[InstantNode, RateNet]:
         """Removes (and returns) a node from the network.
 
         Parameters
@@ -388,7 +388,7 @@ class Network(Module):
 
         Returns
         -------
-        Union[ActivationFunction, RateNet]
+        Union[InstantNode, RateNet]
             Removed node.
         """
         node_data = self.get_node(node)

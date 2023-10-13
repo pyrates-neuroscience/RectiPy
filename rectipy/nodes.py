@@ -5,12 +5,13 @@ Contains the network classes, which are the main interfaces for the user to inte
 from pyrates import NodeTemplate, CircuitTemplate, clear, clear_frontend_caches
 import torch
 from torch.nn import Module, Tanh, Softmax, Softmin, Sigmoid, Identity, LogSoftmax
+from torch.nn import LSTMCell
 from typing import Callable, Union, Iterator
 import numpy as np
 from .utility import to_device
 
 
-class ActivationFunction:
+class InstantNode:
 
     def __init__(self, n: int, func: str, **kwargs):
 
@@ -48,6 +49,55 @@ class ActivationFunction:
 
     def parameters(self, **kwargs):
         return self.func.parameters(**kwargs)
+
+
+class MemoryNode(InstantNode):
+
+    def __init__(self, n: int, func: str, delay: int = 2, dtype: torch.dtype = torch.float64, device: str = "cpu",
+                 **kwargs):
+
+        # initialize memory stack
+        self.stack = torch.zeros((delay, n), dtype=dtype, device=device)
+
+        # call parent method
+        super().__init__(n, func, **kwargs)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self.stack = self.stack.roll(1, 0)
+        self.stack[0, :] = x
+        return self.func.forward(self.stack[-1, :])
+
+
+class MemoryNet(Module):
+
+    def __init__(self, n: int, func: str, delays: np.ndarray, dtype: torch.dtype = torch.float64, device: str = "cpu",
+                 **kwargs):
+
+        # preparations
+        if delays.shape[0] != n:
+            raise ValueError("The number of delays must correspond to the number of node units.")
+        super().__init__()
+
+        # create memory nodes
+        unique_delays = np.unique(delays)
+        self.memory_nodes = []
+        self.input_indices = []
+        for d in unique_delays:
+            idx = np.argwhere(delays == d)
+            num = len(idx)
+            self.memory_nodes.append(MemoryNode(num, func, d, dtype=dtype, device=device, **kwargs))
+            self.input_indices.append(idx)
+
+    def __getitem__(self, item):
+        pass
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.concat([node.forward(x[idx]) for node, idx in zip(self.memory_nodes, self.input_indices)], 0)
+
+    def parameters(self, **kwargs):
+        for n in self.memory_nodes:
+            for p in n.parameters(**kwargs):
+                yield p
 
 
 class RateNet(Module):

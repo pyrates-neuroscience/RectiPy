@@ -8,6 +8,8 @@ Changelog
 ------
 
 - updated readthedocs configuration file
+- added new node classes `MemoryNode` and `MemoryNet` that allow to implement delay coupling in networks
+- renamed the `FunctionNode` class into `InstantNode` to better set it apart from other node types that have some type of intrinsic memory
 
 0.11.0
 ------

@@ -255,9 +255,17 @@ class Network(Module):
         # add operator key to variable names
         var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'in_net': spike_var,
                     'out': output_var, 'spike': spike_def}
+        if "record_vars" in kwargs:
+            var_dict["record_vars"] = kwargs.pop("record_vars")
+
         self._var_map = {}
         if op is not None:
             for key, var in var_dict.copy().items():
+                if key == "record_vars":
+                    kwargs["var_mapping"] = {}
+                    for v in var:
+                        v_new = add_op_name(op, v, self._var_map)
+                        kwargs["var_mapping"][v_new] = v_new
                 if type(var) is list:
                     var_dict[key] = [add_op_name(op, v, self._var_map) for v in var]
                 else:

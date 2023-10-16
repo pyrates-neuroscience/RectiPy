@@ -77,7 +77,7 @@ loss_hist = []
 for epoch in range(epochs):
 
     # perform forward pass
-    obs_learner = learner_net.run(inputs, sampling_steps=1, enable_grad=True, verbose=False, truncate_steps=500)
+    obs_learner = learner_net.run(inputs, sampling_steps=1, enable_grad=True, verbose=False)
     predictions = obs_learner["out"]
 
     # calculate loss

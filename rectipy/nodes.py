@@ -225,7 +225,7 @@ class RateNet(Module):
             set_grad.append(v_new)
         if detach_params:
             self._args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self._args]
-            set_grad.extend(self._args)
+            set_grad.extend([arg for arg in self._args if type(arg) is torch.Tensor and arg.requires_grad])
         for v in set_grad:
             if type(v) is torch.Tensor:
                 v.requires_grad = requires_grad
@@ -367,7 +367,9 @@ class SpikeNet(RateNet):
 
         # extract keyword arguments for initialization
         kwargs["param_mapping"] = {"spike_var": spike_var}
-        kwargs["var_mapping"] = {"spike_def": spike_def}
+        if "var_mapping" not in kwargs:
+            kwargs["var_mapping"] = {}
+        kwargs["var_mapping"].update({"spike_def": spike_def})
 
         return super().from_pyrates(node, input_var, output_var, weights, source_var, target_var,
                                     train_params=train_params, **kwargs)
@@ -434,7 +436,9 @@ class MultiSpikeNet(RateNet):
 
         # extract keyword arguments for initialization
         kwargs["param_mapping"] = {f"spike_var_{i}": spike_var[i] for i in range(len(spike_var))}
-        kwargs["var_mapping"] = {f"spike_def_{i}": spike_def[i] for i in range(len(spike_def))}
+        if "var_mapping" not in kwargs:
+            kwargs["var_mapping"] = {}
+        kwargs["var_mapping"].update({f"spike_def_{i}": spike_def[i] for i in range(len(spike_def))})
 
         return super().from_pyrates(node, input_var, output_var, weights, source_var, target_var,
                                     train_params=train_params, **kwargs)

@@ -99,6 +99,9 @@ def test_1_2_rls_layer():
     # preparations
     ##############
 
+    torch.manual_seed(5)
+    np.random.seed(5)
+
     # parameters
     dtype = torch.float64
     n = 10
@@ -111,7 +114,7 @@ def test_1_2_rls_layer():
     rls1 = RLS(n, m)
     rls2 = RLS(n, m, weights=w1)
     rls3 = RLS(n, m, weights=w1, beta=0.5)
-    rls4 = RLS(n, m, weights=w1, alpha=0.2)
+    rls4 = RLS(n, m, weights=w1, alpha=0.1)
 
     # these tests should pass
     #########################

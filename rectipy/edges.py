@@ -65,6 +65,32 @@ class Linear(Module):
             val.detach()
 
 
+class LinearMasked(Linear):
+
+    _tensors = ["weights", "mask"]
+
+    def __init__(self, n_in: int, n_out: int, mask: Union[np.ndarray, torch.Tensor],
+                 weights: Union[np.ndarray, torch.Tensor] = None, dtype: torch.dtype = torch.float64,
+                 detach: bool = True, **kwargs):
+
+        # set mask attribute
+        if type(mask) is np.ndarray:
+            mask = torch.tensor(mask, dtype=dtype)
+        if mask.shape[0] == n_in and mask.shape[1] == n_out:
+            mask = mask.T
+        elif mask.shape[0] != n_out or mask.shape[1] != n_in:
+            raise ValueError("Shape of the provided mask does not match the input and output dimensions of the "
+                             "source and target nodes.")
+        mask.requires_grad = False
+        self.mask = mask
+
+        # call super method
+        super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=detach, **kwargs)
+
+    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        return (self.weights * self.mask) @ x
+
+
 class RLS(Linear):
 
     _tensors = ["weights", "P"]

@@ -10,6 +10,9 @@ Changelog
 - updated readthedocs configuration file
 - added new node classes `MemoryNode` and `MemoryNet` that allow to implement delay coupling in networks
 - renamed the `FunctionNode` class into `InstantNode` to better set it apart from other node types that have some type of intrinsic memory
+- improved method for detaching tensors via `Network.detach()` - provides more control over which tensors to detach now.
+- debugged `FeedbackNetwork.compile()` method to work with multiple calls of the method
+- introduced edge masking as a new feature. Can be used by passing a mask array to the keyword argument `mask` of `Network.add_edge`
 
 0.11.0
 ------

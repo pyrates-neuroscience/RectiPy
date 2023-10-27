@@ -93,7 +93,7 @@ def test_2_2_detach():
     # create different instances of RNNLayer
     rnn1 = RateNet(func, args, {"out": [0, n]}, {"in": 0, "weights": 1}, train_params=["weights"])
     rnn2 = RateNet(func, args2, {"out": [0, n]}, {"in": 0, "weights": 1}, train_params=["weights"])
-    rnn2.detach()
+    rnn2.detach(detach_params=True, requires_grad=False)
 
     # these tests should pass
     assert rnn1.y.requires_grad

@@ -3,7 +3,7 @@ from networkx.classes.reportviews import NodeView
 from torch.nn import Module
 from typing import Union, Iterator, Callable, Tuple, Optional
 from .nodes import RateNet, SpikeNet, InstantNode
-from .edges import RLS, Linear
+from .edges import RLS, Linear, LinearMasked
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
@@ -369,11 +369,12 @@ class Network(Module):
         kwargs.update({"n_in": self[source]["n_out"], "n_out": self[target]["n_in"],
                        "weights": weights, "dtype": dtype})
         trainable = True
+        LinEdge = LinearMasked if "mask" in kwargs else Linear
         if train is None:
             trainable = False
-            edge = Linear(**kwargs, detach=True)
+            edge = LinEdge(**kwargs, detach=True)
         elif train == "gd":
-            edge = Linear(**kwargs, detach=False)
+            edge = LinEdge(**kwargs, detach=False)
         elif train == "rls":
             edge = RLS(**kwargs)
             self._train_edge = (source, target)
@@ -1179,6 +1180,13 @@ class FeedbackNetwork(Network):
 
     def compile(self):
 
+        if self._fb_graph is not None:
+
+            # add feedback edges to original graph again
+            for edge in self._fb_graph.edges:
+                self.graph.add_edge(edge[0], edge[1], **self._fb_graph[edge[0]][edge[1]])
+            self._fb_graph = None
+
         # sort edges into feedback and feedforward edges
         ffwd_edges, fb_edges = [], []
         for edge in self.graph.edges:
@@ -1235,6 +1243,26 @@ class FeedbackNetwork(Network):
         edge_attrs["feedback"] = feedback
         return super().add_edge(source, target, weights=weights, train=train, dtype=dtype, edge_attrs=edge_attrs,
                                 **kwargs)
+
+    def get_edge(self, source: str, target: str) -> Linear:
+        """Returns edge instance from the network.
+
+        Parameters
+        ----------
+        source
+            Name of the source node.
+        target
+            Name of the target node.
+
+        Returns
+        -------
+        Linear
+            Instance of the edge class.
+        """
+        try:
+            return super().get_edge(source, target)
+        except KeyError:
+            return self._fb_graph[source][target]["edge"]
 
     def _backward(self, x: Union[torch.Tensor, np.ndarray], n: str) -> torch.Tensor:
 

@@ -126,7 +126,11 @@ class RateNet(Module):
         self.n_in = int(in_arg.shape[0]) if hasattr(in_arg, "shape") else 1
 
         # initialize trainable parameters
-        self.train_params = [self._args[self._param_map[p]] for p in train_params] if train_params else []
+        for p in self._args:
+            if type(p) is torch.Tensor:
+                p.requires_grad = False
+        self._train_idx = [self._param_map[p] for p in train_params] if train_params else []
+        self.train_params = [self._args[idx] for idx in self._train_idx]
         for p in self.train_params:
             p.requires_grad = True
 
@@ -216,16 +220,24 @@ class RateNet(Module):
         for p in self.train_params:
             yield p
 
-    def detach(self, requires_grad: bool = False, detach_params: bool = True):
+    def detach(self, requires_grad: bool = False, detach_params: bool = False):
         set_grad = []
         for key in self.state_vars:
             v = getattr(self, key)
             v_new = v.detach()
             setattr(self, key, v_new)
             set_grad.append(v_new)
-        if detach_params:
-            self._args = [arg.detach() if type(arg) is torch.Tensor else arg for arg in self._args]
-            set_grad.extend([arg for arg in self._args if type(arg) is torch.Tensor and arg.requires_grad])
+        grad_params = [p.requires_grad if type(p) is torch.Tensor else False for p in self._args]
+        for idx, grad in enumerate(grad_params):
+            if grad:
+                if idx not in self._train_idx:
+                    p = self._args[idx].detach()
+                    p.requires_grad = False
+                    self._args[idx] = p
+                elif detach_params:
+                    p = self._args[idx].detach()
+                    self._args[idx] = p
+                    set_grad.append(p)
         for v in set_grad:
             if type(v) is torch.Tensor:
                 v.requires_grad = requires_grad

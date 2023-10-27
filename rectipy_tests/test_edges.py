@@ -111,7 +111,7 @@ def test_1_2_rls_layer():
     rls1 = RLS(n, m)
     rls2 = RLS(n, m, weights=w1)
     rls3 = RLS(n, m, weights=w1, beta=0.5)
-    rls4 = RLS(n, m, weights=w1, alpha=0.5)
+    rls4 = RLS(n, m, weights=w1, alpha=0.2)
 
     # these tests should pass
     #########################

@@ -65,6 +65,88 @@ class Linear(Module):
             val.detach()
 
 
+class LinearMemory(Linear):
+
+    _tensors = ["weights", "buffer", "delays"]
+
+    def __init__(self, n_in: int, n_out: int, delays: Union[np.ndarray, torch.Tensor],
+                 weights: Union[np.ndarray, torch.Tensor] = None,
+                 intrinsic_weights: Union[np.ndarray, torch.Tensor] = None, dtype: torch.dtype = torch.float64,
+                 detach: bool = True, **kwargs):
+
+        # set up delay tensor
+        if type(delays) is np.ndarray:
+            delays = torch.tensor(delays, dtype=torch.long)
+        if len(delays) != n_in:
+            raise ValueError("The number of delays must match the number of node inputs.")
+        self.delays = delays
+
+        # set up intrinsic buffer
+        self.buffer = torch.zeros((n_in, delays.max()+1), dtype=dtype)
+
+        # call super method
+        train_params = kwargs.pop("train_params", ["weights"])
+        super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=detach, train_params=train_params, **kwargs)
+
+    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        self.buffer = self.buffer.roll(-1, 1)
+        self.buffer[:, self.delays] = x
+        return super().forward(self.buffer[:, 0])
+
+
+class LinearFilter(Linear):
+
+    _tensors = ["weights", "filter", "y"]
+
+    def __init__(self, n_in: int, n_out: int, filter_weights: Union[np.ndarray, torch.Tensor],
+                 weights: Union[np.ndarray, torch.Tensor] = None, dtype: torch.dtype = torch.float64,
+                 detach: bool = True, **kwargs):
+
+        # set up intrinsic weights
+        if type(filter_weights) is np.ndarray:
+            filter_weights = torch.tensor(filter_weights, dtype=dtype)
+        if filter_weights.shape[0] != n_in or filter_weights.shape[1] != n_in:
+            raise ValueError("Intrinsic weights have to be a square matrix with the number of rows and columns matching"
+                             "the number of inputs to the edge.")
+        self.filter = filter_weights
+        self.y = torch.zeros(n_in, dtype=dtype)
+
+        # call super method
+        train_params = kwargs.pop("train_params", ["weights", "filter"])
+        super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=detach, train_params=train_params, **kwargs)
+
+    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        self.y = self.filter @ self.y + x
+        return super().forward(self.y)
+
+
+class LinearMemoryFilter(LinearMemory):
+
+    _tensors = ["weights", "buffer", "delays", "filter"]
+
+    def __init__(self, n_in: int, n_out: int, delays: Union[np.ndarray, torch.Tensor],
+                 filter_weights: Union[np.ndarray, torch.Tensor], weights: Union[np.ndarray, torch.Tensor] = None,
+                 dtype: torch.dtype = torch.float64, detach: bool = True, **kwargs):
+
+        # set up intrinsic weights
+        if type(filter_weights) is np.ndarray:
+            filter_weights = torch.tensor(filter_weights, dtype=dtype)
+        if filter_weights.shape[0] != n_in or filter_weights.shape[1] != n_in:
+            raise ValueError("Intrinsic weights have to be a square matrix with the number of rows and columns matching"
+                             "the number of inputs to the edge.")
+        self.filter = filter_weights
+
+        # call super method
+        train_params = kwargs.pop("train_params", ["weights", "filter"])
+        super().__init__(n_in, n_out, delays=delays, weights=weights, dtype=dtype, detach=detach,
+                         train_params=train_params, **kwargs)
+
+    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        self.buffer = self.filter @ self.buffer.roll(-1, 1)
+        self.buffer[:, self.delays] = x
+        return super().forward(self.buffer[:, 0])
+
+
 class LinearMasked(Linear):
 
     _tensors = ["weights", "mask"]
@@ -85,7 +167,8 @@ class LinearMasked(Linear):
         self.mask = mask
 
         # call super method
-        super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=detach, **kwargs)
+        train_params = kwargs.pop("train_params", ["weights"])
+        super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=detach, train_params=train_params, **kwargs)
 
     def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
         return (self.weights * self.mask) @ x
@@ -139,6 +222,7 @@ class RLS(Linear):
 
         # call super method
         super().__init__(n_in, n_out, weights=weights, dtype=dtype, detach=True)
+        self.train_params = []
 
     def update(self, x: torch.Tensor, y: torch.Tensor, y_hat: torch.Tensor) -> None:
 

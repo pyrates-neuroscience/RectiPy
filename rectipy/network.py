@@ -3,7 +3,7 @@ from networkx.classes.reportviews import NodeView
 from torch.nn import Module
 from typing import Union, Iterator, Callable, Tuple, Optional
 from .nodes import RateNet, SpikeNet, InstantNode
-from .edges import RLS, Linear, LinearMasked
+from .edges import RLS, Linear, LinearMasked, LinearMemory, LinearFilter, LinearMemoryFilter
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
 from pyrates import NodeTemplate, CircuitTemplate
@@ -326,7 +326,7 @@ class Network(Module):
         node = InstantNode(n, activation_function, **kwargs)
 
         # add node to the network graph
-        self.add_node(label, node=node, node_type="diff_eq")
+        self.add_node(label, node=node, node_type="func_instant")
 
         return node
 
@@ -365,11 +365,20 @@ class Network(Module):
         if not edge_attrs:
             edge_attrs = {}
 
+        # choose edge class
+        if "mask" in kwargs:
+            LinEdge = LinearMasked
+        elif "delays" in kwargs:
+            LinEdge = LinearMemoryFilter if "filter_weights" in kwargs else LinearMemory
+        elif "filter_weights" in kwargs:
+            LinEdge = LinearFilter
+        else:
+            LinEdge = Linear
+
         # initialize edge
         kwargs.update({"n_in": self[source]["n_out"], "n_out": self[target]["n_in"],
                        "weights": weights, "dtype": dtype})
         trainable = True
-        LinEdge = LinearMasked if "mask" in kwargs else Linear
         if train is None:
             trainable = False
             edge = LinEdge(**kwargs, detach=True)
@@ -477,13 +486,8 @@ class Network(Module):
         Iterator
             Trainable model parameters.
         """
-        g = self.graph
-        for node in g:
-            for p in self.get_node(node).parameters(recurse=recurse):
-                yield p
-        for s, t in g.edges:
-            for p in g[s][t]["edge"].parameters():
-                yield p
+        for p in self._get_parameters(self.graph, recurse=recurse):
+            yield p
 
     def detach(self, requires_grad: bool = True, detach_params: bool = False) -> None:
         """Goes through all DE-based nodes and detaches their state variables from the current graph for gradient
@@ -928,6 +932,14 @@ class Network(Module):
 
         return obs, loss_val.item()
 
+    def _get_parameters(self, g: DiGraph, recurse: bool = True) -> Iterator:
+        for node in g:
+            for p in self.get_node(node).parameters(recurse=recurse):
+                yield p
+        for s, t in g.edges:
+            for p in g[s][t]["edge"].parameters():
+                yield p
+
     def _compile_bwd_graph(self, n: str, graph: dict) -> dict:
         sources = list(self.graph.predecessors(n))
         if len(sources) > 0:
@@ -1263,6 +1275,41 @@ class FeedbackNetwork(Network):
             return super().get_edge(source, target)
         except KeyError:
             return self._fb_graph[source][target]["edge"]
+
+    def get_node(self, node: str) -> Union[InstantNode, RateNet]:
+        """Returns node instance from the network.
+
+            Parameters
+            ----------
+            node
+                Name of the node.
+
+            Returns
+            -------
+            Union[InstantNode, RateNet]
+                Instance of a node class.
+            """
+        try:
+            return super().get_node(node)
+        except KeyError:
+            return self._fb_graph.nodes[node]["node"]
+
+    def parameters(self, recurse: bool = True) -> Iterator:
+        """Yields the trainable parameters of the network model.
+
+        Parameters
+        ----------
+        recurse
+            If true, yields parameters of all submodules.
+
+        Yields
+        ------
+        Iterator
+            Trainable model parameters.
+        """
+        for g in [self.graph, self._fb_graph]:
+            for p in self._get_parameters(g, recurse=recurse):
+                yield p
 
     def _backward(self, x: Union[torch.Tensor, np.ndarray], n: str) -> torch.Tensor:
 

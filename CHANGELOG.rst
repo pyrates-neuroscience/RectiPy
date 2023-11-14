@@ -12,6 +12,7 @@ Changelog
 - added a keyword argument `reset` to the `Network.add_diffeq_node` that controls whether the spike reset mechanism of `RectiPy` should be used for a given node or whether it has an intrinsic spike reset mechanism
 - added a QIF neuron template that uses an intrinsic spike reset mechanism
 - updated the pytest library to account for the changes
+- dropped official support for python 3.6 and added support for python 3.10
 
 0.11
 ----

@@ -34,6 +34,24 @@ qif_sfa_op:
     alpha: 1.0
     tau_x: 10.0
 
+# operator for QIF neurons with exponentially decaying synaptic output
+qif_reset_op:
+  base: OperatorTemplate
+  equations:
+    - "v' = (v^2 + eta + I_ext)/tau + k*s_in - 2.0*reset*v"
+    - "s' = -s/tau_s + spike"
+  variables:
+    s: output(0.0)
+    v: variable(-2.0)
+    tau: 1.0
+    k: 1.0
+    tau_s: 1.0
+    eta: -5.0
+    I_ext: input(0.0)
+    spike: input(0.0)
+    reset: input(0.0)
+    s_in: input(0.0)
+
 # node templates
 ################
 

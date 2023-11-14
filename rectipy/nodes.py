@@ -290,6 +290,46 @@ class RateNet(Module):
 
 class SpikeNet(RateNet):
 
+    def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
+                 spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
+                 dtype: torch.dtype = torch.float64, train_params: list = None, device: str = None, **kwargs):
+
+        super().__init__(rnn_func, rnn_args, var_map, param_map, dt=dt, dtype=dtype, train_params=train_params,
+                         device=device, **kwargs)
+
+        # define spiking function
+        Spike.center = torch.tensor(kwargs.pop("spike_center", 1.0), device=self.device, dtype=self.y.dtype)
+        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 100.0/np.abs(spike_threshold - spike_reset)),
+                                   device=self.device, dtype=self.y.dtype)
+        self.spike = Spike.apply
+
+        # set private attributes
+        self._spike_var = self._param_map["spike_var"]
+        self._reset_var = self._param_map["reset_var"]
+        self._thresh = torch.tensor(spike_threshold, device=self.device, dtype=self.y.dtype)
+
+    @classmethod
+    def from_pyrates(cls, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str, output_var: str,
+                     weights: np.ndarray = None, source_var: str = None, target_var: str = None,
+                     spike_var: str = 'spike', reset_var: str = 'reset', train_params: list = None, **kwargs):
+
+        # extract keyword arguments for initialization
+        kwargs["param_mapping"] = {"spike_var": spike_var, "reset_var": reset_var}
+        return super().from_pyrates(node, input_var, output_var, weights, source_var, target_var,
+                                    train_params=train_params, **kwargs)
+
+    def forward(self, x):
+        spikes = self.spike(self._y_spike - self._thresh) / self.dt
+        reset = spikes.detach()
+        self._args[self._spike_var] = spikes
+        self._args[self._reset_var] = reset
+        self._args[self._inp_ext] = x
+        self.y = self.y + self.dt * self.func(0, self.y, *self._args)
+        return self.y
+
+
+class SpikeResetNet(RateNet):
+
     state_vars = ["_y_start", "_y_spike", "_y_stop"]
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
@@ -301,18 +341,18 @@ class SpikeNet(RateNet):
 
         # define spiking function
         Spike.center = torch.tensor(kwargs.pop("spike_center", 1.0), device=self.device, dtype=self.y.dtype)
-        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 200.0/np.abs(spike_threshold - spike_reset)),
+        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 100.0/np.abs(spike_threshold - spike_reset)),
                                    device=self.device, dtype=self.y.dtype)
         self.spike = Spike.apply
 
         # set private attributes
-        self._spike_var = self._param_map['spike_var']
+        self._spike_var = self._param_map["spike_var"]
         self._reset = torch.tensor(spike_reset, device=self.device, dtype=self.y.dtype)
         self._thresh = torch.tensor(spike_threshold, device=self.device, dtype=self.y.dtype)
 
         # define state variable slices for updates
-        self._spike_start = torch.tensor(self._var_map['spike_def'][0], dtype=torch.int64, device=self.device)
-        self._spike_stop = torch.tensor(self._var_map['spike_def'][-1], dtype=torch.int64, device=self.device)
+        self._reset_start = torch.tensor(self._var_map["reset_var"][0], dtype=torch.int64, device=self.device)
+        self._reset_stop = torch.tensor(self._var_map["reset_var"][-1], dtype=torch.int64, device=self.device)
         self._y_start = torch.tensor(0.0)
         self._y_spike = torch.tensor(0.0)
         self._y_stop = torch.tensor(0.0)
@@ -321,18 +361,18 @@ class SpikeNet(RateNet):
     @classmethod
     def from_pyrates(cls, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str, output_var: str,
                      weights: np.ndarray = None, source_var: str = None, target_var: str = None,
-                     spike_var: str = 'spike', spike_def: str = 'v', train_params: list = None, **kwargs):
+                     spike_var: str = 'spike', reset_var: str = 'v', train_params: list = None, **kwargs):
 
         # if multiple spiking variables are defined, create a MultiSpike node
         if type(spike_var) is list:
-            return MultiSpikeNet.from_pyrates(node, input_var, output_var, weights, source_var, target_var,
-                                              spike_var, spike_def, train_params, **kwargs)
+            return MultiSpikeResetNet.from_pyrates(node, input_var, output_var, weights, source_var, target_var,
+                                                   spike_var, reset_var, train_params, **kwargs)
 
         # extract keyword arguments for initialization
         kwargs["param_mapping"] = {"spike_var": spike_var}
         if "var_mapping" not in kwargs:
             kwargs["var_mapping"] = {}
-        kwargs["var_mapping"].update({"spike_def": spike_def})
+        kwargs["var_mapping"].update({"reset_var": reset_var})
 
         return super().from_pyrates(node, input_var, output_var, weights, source_var, target_var,
                                     train_params=train_params, **kwargs)
@@ -344,9 +384,9 @@ class SpikeNet(RateNet):
         self._args[self._inp_ext] = x
         self.y = torch.cat((self._y_start, self._y_spike, self._y_stop), 0)
         y_new = self.y + self.dt * self.func(0, self.y, *self._args)
-        self._y_start = y_new[:self._spike_start]
-        self._y_spike = y_new[self._spike_start:self._spike_stop]*(1.0-reset) + reset*self._reset
-        self._y_stop = y_new[self._spike_stop:]
+        self._y_start = y_new[:self._reset_start]
+        self._y_spike = y_new[self._reset_start:self._reset_stop] * (1.0 - reset) + reset * self._reset
+        self._y_stop = y_new[self._reset_stop:]
         return self.y[self._start:self._stop]
 
     def reset(self, y: np.ndarray = None, idx: np.ndarray = None):
@@ -354,14 +394,14 @@ class SpikeNet(RateNet):
         self._init_state()
 
     def _init_state(self):
-        self._y_start = self.y[:self._spike_start].clone()
-        self._y_spike = self.y[self._spike_start:self._spike_stop].clone()
-        self._y_stop = self.y[self._spike_stop:].clone()
+        self._y_start = self.y[:self._reset_start].clone()
+        self._y_spike = self.y[self._reset_start:self._reset_stop].clone()
+        self._y_stop = self.y[self._reset_stop:].clone()
 
 
-class MultiSpikeNet(RateNet):
+class MultiSpikeResetNet(RateNet):
 
-    state_vars = ["_y_spike"]
+    state_vars = ["_y_reset"]
 
     def __init__(self, rnn_func: Callable, rnn_args: tuple, var_map: dict, param_map: dict,
                  spike_threshold: float = 1e2, spike_reset: float = -1e2, dt: float = 1e-3,
@@ -372,7 +412,7 @@ class MultiSpikeNet(RateNet):
 
         # define spiking function
         Spike.center = torch.tensor(kwargs.pop("spike_center", 1.0), device=self.device, dtype=self.y.dtype)
-        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 200.0/np.abs(spike_threshold - spike_reset)),
+        Spike.slope = torch.tensor(kwargs.pop("spike_slope", 100.0/np.abs(spike_threshold - spike_reset)),
                                    device=self.device, dtype=self.y.dtype)
         self.spike = Spike.apply
 
@@ -380,45 +420,45 @@ class MultiSpikeNet(RateNet):
         self._n_spike_vars = 1
         while f"spike_var_{self._n_spike_vars}" in self._param_map:
             self._n_spike_vars += 1
-        self._spike_var = [self._param_map[f'spike_var_{i}'] for i in range(self._n_spike_vars)]
+        self._spike_var = [self._param_map[f"spike_var_{i}"] for i in range(self._n_spike_vars)]
         self._reset = torch.tensor(spike_reset, device=self.device, dtype=self.y.dtype)
         self._thresh = torch.tensor(spike_threshold, device=self.device, dtype=self.y.dtype)
 
         # define state variable slices for updates
-        self._spike_start, self._spike_stop, self._y_spike = [], [], []
+        self._reset_start, self._reset_stop, self._y_reset = [], [], []
         for i in range(self._n_spike_vars):
-            start, stop = self._var_map[f'spike_def_{i}']
-            self._spike_start.append(torch.tensor(start, dtype=torch.int64, device=self.device))
-            self._spike_stop.append(torch.tensor(stop, dtype=torch.int64, device=self.device))
-            self._y_spike.append(torch.zeros(size=(stop-start,), dtype=self.y.dtype, device=self.device))
+            start, stop = self._var_map[f"spike_reset_{i}"]
+            self._reset_start.append(torch.tensor(start, dtype=torch.int64, device=self.device))
+            self._reset_stop.append(torch.tensor(stop, dtype=torch.int64, device=self.device))
+            self._y_reset.append(torch.zeros(size=(stop - start,), dtype=self.y.dtype, device=self.device))
 
     @classmethod
     def from_pyrates(cls, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str, output_var: str,
                      weights: np.ndarray = None, source_var: str = None, target_var: str = None,
-                     spike_var: str = 'spike', spike_def: str = 'v', train_params: list = None, **kwargs):
+                     spike_var: str = 'spike', reset_var: str = 'v', train_params: list = None, **kwargs):
 
         # extract keyword arguments for initialization
         kwargs["param_mapping"] = {f"spike_var_{i}": spike_var[i] for i in range(len(spike_var))}
         if "var_mapping" not in kwargs:
             kwargs["var_mapping"] = {}
-        kwargs["var_mapping"].update({f"spike_def_{i}": spike_def[i] for i in range(len(spike_def))})
+        kwargs["var_mapping"].update({f"spike_reset_{i}": reset_var[i] for i in range(len(reset_var))})
 
         return super().from_pyrates(node, input_var, output_var, weights, source_var, target_var,
                                     train_params=train_params, **kwargs)
 
     def forward(self, x):
         reset = []
-        for v, y in zip(self._spike_var, self._y_spike):
+        for v, y in zip(self._spike_var, self._y_reset):
             spikes = self.spike(y - self._thresh)
             reset.append(spikes.detach())
             self._args[v] = spikes / self.dt
         self._args[self._inp_ext] = x
         y_new = self.y + self.dt * self.func(0, self.y, *self._args)
-        for i, (start, stop, re) in enumerate(zip(self._spike_start, self._spike_stop, reset)):
+        for i, (start, stop, re) in enumerate(zip(self._reset_start, self._reset_stop, reset)):
             y_tmp = y_new[start:stop]
             y_tmp[re > 0.0] = self._reset
             y_new[start:stop] = y_tmp
-            self._y_spike[i] = y_tmp
+            self._y_reset[i] = y_tmp
         self.y = y_new
         return self.y[self._start:self._stop]
 

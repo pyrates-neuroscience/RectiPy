@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.nodes import RateNet, SpikeNet
+from rectipy.nodes import RateNet, SpikeResetNet
 import torch
 import pytest
 import numpy as np
@@ -54,10 +54,11 @@ def test_2_1_ratenet_init():
     rnn2 = RateNet.from_pyrates("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                                 source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                                 output_var="tanh_op/r", clear=True, verbose=False)
-    rnn3 = SpikeNet.from_pyrates("neuron_model_templates.spiking_neurons.qif.qif", weights=weights,
-                                 source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
-                                 output_var="qif_op/s", spike_def="qif_op/v", spike_var="qif_op/spike",
-                                 spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False, dtype=torch.float32)
+    rnn3 = SpikeResetNet.from_pyrates("neuron_model_templates.spiking_neurons.qif.qif", weights=weights,
+                                      source_var="qif_op/s", target_var="qif_op/s_in", input_var="qif_op/I_ext",
+                                      output_var="qif_op/s", reset_var="qif_op/v", spike_var="qif_op/spike",
+                                      spike_threshold=1e3, spike_reset=-1e3, clear=True, verbose=False,
+                                      dtype=torch.float32)
     rnn4 = RateNet.from_pyrates("neuron_model_templates.rate_neurons.leaky_integrator.tanh", weights=weights,
                                 source_var="tanh_op/r", target_var="li_op/r_in", input_var="li_op/I_ext",
                                 output_var="tanh_op/r", clear=True, train_params=["weights"], verbose=False)
@@ -65,7 +66,7 @@ def test_2_1_ratenet_init():
     # these tests should pass
     assert isinstance(rnn1, RateNet)
     assert isinstance(rnn2, RateNet)
-    assert isinstance(rnn3, SpikeNet)
+    assert isinstance(rnn3, SpikeResetNet)
     assert len(rnn2.y) == n
     assert len(rnn3.y) == 2*n
     assert len(list(rnn4.parameters())) - len(list(rnn2.parameters())) == 1

@@ -2,7 +2,7 @@
 """
 
 # imports
-from rectipy.nodes import RateNet, SpikeNet, InstantNode
+from rectipy.nodes import RateNet, SpikeNet, InstantNode, SpikeResetNet
 from rectipy.edges import Linear, RLS
 from rectipy import Network
 import torch
@@ -73,15 +73,15 @@ def test_3_1_diffeq_nodes():
     net4.add_diffeq_node("n1", node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
                          target_var=t_var, clear=True, verbose=False, train_params=["weights"])
     net5.add_diffeq_node("n1", node_spiking, weights=weights, input_var="I_ext", output_var="s", source_var="s",
-                         target_var="s_in", op="qif_op", spike_var="spike", spike_def="v", clear=True, verbose=False,
-                         dtype=torch.float32)
+                         target_var="s_in", op="qif_op", spike_var="spike", reset_var="v", clear=True, verbose=False,
+                         dtype=torch.float32, reset=True)
     net6.add_node("n1", rnn, node_type="diff_eq")
 
     # these tests should pass
     assert isinstance(net1.get_node("n1"), RateNet)
     assert isinstance(net2.get_node("n1"), RateNet)
     assert isinstance(net6.get_node("n1"), RateNet)
-    assert isinstance(net5.get_node("n1"), SpikeNet)
+    assert isinstance(net5.get_node("n1"), SpikeResetNet)
     assert isinstance(net1["n1"]["node"], RateNet)
     assert net6.get_node("n1") == rnn
     assert len(net3._var_map) - len(net1._var_map) > 0

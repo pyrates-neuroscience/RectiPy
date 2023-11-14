@@ -2,7 +2,7 @@ import torch
 from networkx.classes.reportviews import NodeView
 from torch.nn import Module
 from typing import Union, Iterator, Callable, Tuple, Optional
-from .nodes import RateNet, SpikeNet, InstantNode
+from .nodes import RateNet, SpikeNet, InstantNode, SpikeResetNet
 from .edges import RLS, Linear, LinearMasked, LinearMemory, LinearFilter, LinearMemoryFilter
 from .utility import retrieve_from_dict, add_op_name
 from .observer import Observer
@@ -211,8 +211,8 @@ class Network(Module):
 
     def add_diffeq_node(self, label: str, node: Union[str, NodeTemplate, CircuitTemplate], input_var: str,
                         output_var: str, weights: np.ndarray = None, source_var: str = None, target_var: str = None,
-                        spike_var: Union[str, list] = None, spike_def: Union[str, list] = None, op: str = None,
-                        train_params: list = None, **kwargs) -> RateNet:
+                        spike_var: Union[str, list] = None, reset_var: Union[str, list] = None, reset: bool = True,
+                        op: str = None, train_params: list = None, **kwargs) -> RateNet:
         """Adds a differential equation-based RNN node to the `Network` instance.
 
         Parameters
@@ -235,9 +235,14 @@ class Network(Module):
         target_var
             Target variable that will be used for each connection in the network.
         spike_var
-            Name of the parameter in the node equations that recurrent input from the RNN should be projected to.
-        spike_def
-            Name of the variable in the node equations that should be used to determine spikes in the network.
+            Name of the input variable in the node equations that recurrent input from the RNN should be projected to.
+        reset_var
+            Either the name of the input variable in the node equations that is used for membrane potential resetting
+            after spiking within the node equations (if `reset=False`) or the name of the state variable that should be
+            reset after a spike (if `reset=True`).
+        reset
+            If true, an additional spike resetting mechanism is added that will reset the variable defined by
+            `reset_var` after a spike occurred.
         op
             Name of the operator in which all the above variables can be found. If not provided, it is assumed that
             the operator name is provided together with the variable names, e.g. `source_var = <op>/<var>`.
@@ -253,8 +258,8 @@ class Network(Module):
         """
 
         # add operator key to variable names
-        var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'in_net': spike_var,
-                    'out': output_var, 'spike': spike_def}
+        var_dict = {'svar': source_var, 'tvar': target_var, 'in_ext': input_var, 'out': output_var, 'spike': spike_var,
+                    'reset': reset_var}
         if "record_vars" in kwargs:
             var_dict["record_vars"] = kwargs.pop("record_vars")
 
@@ -279,19 +284,20 @@ class Network(Module):
                         kwargs["node_vars"][f"all/{op}/{key}"] = val
 
         # initialize rnn layer
-        if spike_var is None and spike_def is None:
-            node = RateNet.from_pyrates(node, var_dict['in_ext'], var_dict['out'], weights=weights,
-                                        source_var=var_dict['svar'], target_var=var_dict['tvar'],
-                                        train_params=train_params, device=self.device, dt=self.dt, **kwargs)
-        elif spike_var is None or spike_def is None:
-            raise ValueError('To define a reservoir with a spiking neural network layer, please provide both the '
-                             'name of the variable that spikes should be stored in (`spike_var`) as well as the '
-                             'name of the variable that is used to define spikes (`spike_def`).')
+        args = (node, var_dict['in_ext'], var_dict['out'])
+        kwargs_tmp = {"weights": weights, "source_var": var_dict["svar"], "target_var": var_dict["tvar"],
+                      "train_params": train_params, "device": self.device, "dt": self.dt}
+        if spike_var is None:
+            NodeClass = RateNet
+        elif reset_var is None:
+            raise ValueError('To define a reservoir with a spiking neural network layer, please provide the '
+                             'name of the variable that should be reset after a spike occurred (`reset_var`).')
         else:
-            node = SpikeNet.from_pyrates(node, var_dict['in_ext'], var_dict['out'], weights=weights,
-                                         source_var=var_dict['svar'], target_var=var_dict['tvar'],
-                                         spike_def=var_dict['spike'], spike_var=var_dict['in_net'],
-                                         train_params=train_params, device=self.device, dt=self.dt, **kwargs)
+            kwargs_tmp["spike_var"] = var_dict["spike"]
+            kwargs_tmp["reset_var"] = var_dict["reset"]
+            NodeClass = SpikeResetNet if reset else SpikeNet
+        kwargs.update(kwargs_tmp)
+        node = NodeClass.from_pyrates(*args, **kwargs)
 
         # add node to the network graph
         self.add_node(label, node=node, node_type="diff_eq", op=op)

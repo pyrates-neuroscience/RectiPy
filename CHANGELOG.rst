@@ -1,6 +1,18 @@
 Changelog
 =========
 
+0.12
+----
+
+0.12.0
+------
+
+- added option to define spiking networks which contain the spike reset mechanism in their governing differential equations
+- changed the name of the keyword argument `spike_def` of the method `Network.add_diffeq_node` to `reset_var`
+- added a keyword argument `reset` to the `Network.add_diffeq_node` that controls whether the spike reset mechanism of `RectiPy` should be used for a given node or whether it has an intrinsic spike reset mechanism
+- added a QIF neuron template that uses an intrinsic spike reset mechanism
+- updated the pytest library to account for the changes
+
 0.11
 ----
 

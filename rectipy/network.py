@@ -541,8 +541,8 @@ class Network(Module):
         for node in list(self.nodes):
             self.pop_node(node)
 
-    def run(self, inputs: Union[np.ndarray, torch.Tensor], sampling_steps: int = 1, verbose: bool = True,
-            enable_grad: bool = True, **kwargs) -> Observer:
+    def run(self, inputs: Union[np.ndarray, torch.Tensor], sampling_steps: int = 1, cutoff: int = 0,
+            verbose: bool = True, enable_grad: bool = True, **kwargs) -> Observer:
         """Perform numerical integration of the input-driven network equations.
 
         Parameters
@@ -552,6 +552,8 @@ class Network(Module):
              of input dimensions of the network.
         sampling_steps
             Number of integration steps at which to record observables.
+        cutoff
+            Initial number of simulation steps to disregard.
         verbose
             If true, the progress of the integration will be displayed.
         enable_grad
@@ -586,7 +588,7 @@ class Network(Module):
         with grad():
             for step in range(steps):
                 output = self.forward(inputs[step, :])
-                if step % sampling_steps == 0:
+                if step >= cutoff and step % sampling_steps == 0:
                     if verbose:
                         print(f'Progress: {step}/{steps} integration steps finished.')
                     obs.record(step, output, 0.0, [self.get_var(v[0], v[1]) for v in rec_vars])

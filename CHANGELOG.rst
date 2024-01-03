@@ -4,6 +4,11 @@ Changelog
 0.12
 ----
 
+0.12.1
+------
+
+- added a `cutoff` keyword argument to the `Network.run` function that allows to define the number of initial steps that should be disregarded in the simulation results
+
 0.12.0
 ------
 

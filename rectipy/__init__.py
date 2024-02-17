@@ -29,7 +29,7 @@ Input, recurrent network, and output layer.
 
 __author__ = "Richard Gast"
 __status__ = "Development"
-__version__ = "0.12.0"
+__version__ = "0.12.1-dev0"
 
 from .network import Network, Observer, FeedbackNetwork
 from .utility import random_connectivity, circular_connectivity, input_connections, normalize

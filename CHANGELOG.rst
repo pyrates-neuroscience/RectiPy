@@ -8,6 +8,7 @@ Changelog
 ------
 
 - added a `cutoff` keyword argument to the `Network.run` function that allows to define the number of initial steps that should be disregarded in the simulation results
+- updated PyPI config for uploading new versions
 
 0.12.0
 ------

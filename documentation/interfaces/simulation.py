@@ -41,8 +41,8 @@ node = "neuron_model_templates.spiking_neurons.qif.qif"
 
 # network initialization
 qif = Network(dt=dt, device="cpu")
-qif.add_diffeq_node("qif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                    spike_var="spike", spike_def="v", op="qif_op")
+qif.add_diffeq_node("qif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="v",
+                    spike_var="spike", reset_var="v", op="qif_op")
 
 # %%
 # An important variable for numerical integration is the integration step-size :code:`dt`. It's default value is
@@ -66,7 +66,7 @@ inp = np.zeros((steps, N))
 
 # define target neurons, input strengths, and input frequencies
 target_neurons = [2, 4]
-inp_strengths = [20.0, 10.0]
+inp_strengths = [10.0, 15.0]
 inp_freqs = [0.5, 0.25]
 
 # add sine wave inputs to input array
@@ -93,13 +93,18 @@ obs = qif.run(inputs=inp)
 # Importantly, it records the output variable of the RNN at each integration step by
 # default. We can visualize these dynamics as follows:
 
-obs.plot("out")
-plt.legend([f"s_{i}" for i in range(N)])
+fig, axes = plt.subplots(nrows=2, figsize=(10, 6))
+obs.plot("out", ax=axes[0])
+axes[0].legend([f"v_{i}" for i in range(N)])
+axes[0].set_ylabel("v")
+axes[1].plot(np.mean(obs.to_numpy("out"), axis=1))
+axes[1].set_ylabel("v")
+axes[1].set_xlabel("steps")
+plt.tight_layout()
 plt.show()
 
 # %%
-# As can be seen, the extrinsic input pushed the QIF network into a high-activity regime of relatively
-# synchronized spiking activity.
+# As can be seen, the extrinsic input pushed the QIF network into a high-activity regime of spiking activity.
 # Next to the :code:`inputs` argument, the `rectipy.Network.run` method provides additional keyword arguments
 # that control the recording of RNN state variables. These are described in more detail in the
 # use example that covers the `rectipy.observer.Observer <https://rectipy.readthedocs.io/en/latest/auto_interfaces/observer.html>`_ class.
@@ -110,6 +115,6 @@ obs = qif.run(inp, verbose=False)
 
 # %%
 # If you wanted to speed up the simulation process by running it on one of your GPUs, simply change the device setting
-# during network initialization, i.e. `Network(dt=1e-3, device="cuda:0"`.
+# during network initialization, i.e. `Network(dt=1e-3, device="cuda:0")`.
 # Note that this will fail if PyTorch was not compiled to be cuda compatible or if PyTorch cannot detect any cuda
 # devices.

@@ -582,16 +582,21 @@ class Network(Module):
         else:
             obs = Observer(dt=self.dt, record_loss=kwargs.pop("record_loss", False), **kwargs)
         rec_vars = [v for v in obs.recorded_state_variables]
+        buffer = []
 
         # forward input through static network
         grad = torch.enable_grad if enable_grad else torch.no_grad
         with grad():
             for step in range(steps):
                 output = self.forward(inputs[step, :])
-                if step >= cutoff and step % sampling_steps == 0:
-                    if verbose:
-                        print(f'Progress: {step}/{steps} integration steps finished.')
-                    obs.record(step, output, 0.0, [self.get_var(v[0], v[1]) for v in rec_vars])
+                if step >= cutoff:
+                    buffer.append(output)
+                    if step % sampling_steps == 0:
+                        if verbose:
+                            print(f'Progress: {step}/{steps} integration steps finished.')
+                        obs.record(step, torch.mean(torch.stack(buffer, dim=0), dim=0), 0.0,
+                                   [self.get_var(v[0], v[1]) for v in rec_vars])
+                        buffer = []
                 if truncate_steps < steps and step % truncate_steps == truncate_steps-1:
                     self.detach()
 

@@ -69,7 +69,7 @@ net = Network(dt=1e-3)
 
 # add QIF population to network
 net.add_diffeq_node("qif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                    op="qif_op", spike_def="v", spike_var="spike")
+                    op="qif_op", reset_var="v", spike_var="spike")
 
 # %%
 # The above code implements a network of :math:`N = 5` randomly coupled QIF neurons.
@@ -132,7 +132,7 @@ net.pop_node("qif")
 # add QIF-SFA population to network
 node = "neuron_model_templates.spiking_neurons.qif.qif_sfa"
 net.add_diffeq_node("qif_sfa", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext", output_var="s",
-                    op="qif_sfa_op", spike_def="v", spike_var="spike")
+                    op="qif_sfa_op", reset_var="v", spike_var="spike")
 
 # perform numerical simulation
 obs = net.run(inputs=inp, sampling_steps=10)

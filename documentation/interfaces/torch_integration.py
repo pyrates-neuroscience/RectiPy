@@ -92,10 +92,7 @@ loss = torch.nn.MSELoss()
 
 # matplotlib settings
 import matplotlib
-matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-plt.style.use('dark_background')
-plt.ion()
 
 # figure layout
 fig, ax = plt.subplots(ncols=2, figsize=(12, 6))
@@ -112,7 +109,7 @@ ax[1].set_ylabel(r"$v$")
 # steps has been reached.
 
 # model fitting
-error, tol, step, update_steps, plot_steps, max_step = 10.0, 1e-5, 0, 1000, 100, 1000000
+error, tol, step, update_steps, plot_steps, max_step = 10.0, 1e-5, 0, 1000, 100, 20000
 mse_col, target_col, prediction_col = [], [], []
 l = torch.zeros(1)
 while error > tol and step < max_step:
@@ -148,8 +145,9 @@ while error > tol and step < max_step:
         ax[1].plot(target_col, "blue")
         ax[1].plot(prediction_col, "orange")
         fig.canvas.draw()
-        fig.canvas.flush_events()
-        plt.show()
+        print(f"Training error at step {step}: {error}")
+
+plt.show()
 
 # retrieve optimized parameters
 params = list(learner.parameters())

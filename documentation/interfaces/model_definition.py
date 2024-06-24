@@ -87,7 +87,7 @@ net = Network(dt=dt, device="cpu")
 
 # initialize network
 net.add_diffeq_node("lif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
-                    output_var="s", op="lif_op", spike_var="spike", spike_def="v", spike_threshold=100.0,
+                    output_var="s", op="lif_op", spike_var="spike", reset_var="v", spike_threshold=100.0,
                     spike_reset=-100.0)
 
 # %%

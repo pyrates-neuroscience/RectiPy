@@ -35,7 +35,7 @@ J = random_connectivity(N, N, p, normalize=True)
 # initialize network
 net = Network(dt=1e-2)
 net.add_diffeq_node("rnn", node, weights=J, source_var="s", target_var="s_in", input_var="s_ext", output_var="s",
-                    spike_var="spike", spike_def="v", op="lif_op",
+                    spike_var="spike", reset_var="v", op="lif_op",
                     node_vars={"k": 10.0, "tau": 5.0, "eta": -0.5, "tau_s": 10.0},
                     v_reset=-1e2, v_peak=1e2, clear=True, train_params=["weights"])
 

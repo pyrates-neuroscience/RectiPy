@@ -48,7 +48,7 @@ net = Network(dt=1e-3)
 
 # add LIF population to network
 net.add_diffeq_node("lif", node, weights=J, source_var="s", target_var="s_in", input_var="I_ext",
-                    output_var="s", spike_var="spike", spike_def="v", op="lif_op")
+                    output_var="s", spike_var="spike", reset_var="v", op="lif_op")
 
 # %%
 # The above code implements a `rectipy.Network` with :math:`N = 5` LIF neurons with random coupling weights drawn from

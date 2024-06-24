@@ -324,10 +324,13 @@ def test_3_6_simulation():
     res1 = net1.run(inputs=x, sampling_steps=2, verbose=False)
     res2 = net2.run(inputs=x, record_output=False, record_vars=[('rnn', 'li_op/v', False)], verbose=False)
     res3, res4 = [], []
+    buffer = []
     for step in range(steps):
         out = net3.forward(x[step, :])
+        buffer.append(out.detach().numpy())
         if step % 2 == 0:
-            res3.append(out.detach().numpy())
+            res3.append(np.mean(buffer, axis=0))
+            buffer = []
         res4.append(net3.get_var("rnn", var="li_op/v").detach().numpy())
 
     # these tests should pass

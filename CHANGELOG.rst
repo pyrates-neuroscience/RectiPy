@@ -11,6 +11,7 @@ Changelog
 - updated documentation and use examples to account for the recent changes to the `Network.add_diffeq_node` and `Network.run` methods
 - updated pytests to account for new downsampling method
 - added possibility to implement adaptive edges (i.e. synaptic plasticity). The `Network.add_diffeq_node` now accepts `pyrates.EdgeTemplates` instances via the keyword argument `edge_template`.
+- dropped support for Python 3.7, added support for Python 3.11 and 3.12
 
 0.12.1
 ------

@@ -531,7 +531,7 @@ class Network(Module):
             n = self.get_node(node)
             if hasattr(n, "y"):
                 if state and node in state:
-                    n.reset(state[node])
+                    n.reset(y=state[node])
                 else:
                     n.reset()
 

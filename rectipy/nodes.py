@@ -130,6 +130,8 @@ class RateNet(Module):
             if isinstance(node, CircuitTemplate):
                 template = node
                 var_map = var_mapping
+                if "node_vars" in kwargs:
+                    kwargs["node_values"] = kwargs.pop("node_vars")
                 func, args, keys, state_var_indices = node.get_run_func('rnn_layer', dt, backend='torch', clear=False,
                                                                         inplace_vectorfield=False, **kwargs)
             else:
@@ -245,9 +247,9 @@ class RateNet(Module):
             if source_var is None or target_var is None:
                 raise ValueError("If synaptic weights are passed (`weights`), please provide the names of the source "
                                  "and target variable that should be connected via `weights`.")
-            edge_attr = kwargs.pop("edge_attr", None)
+            edge_attr, edge_template = kwargs.pop("edge_attr", None), kwargs.pop("edge_template", None)
             template.add_edges_from_matrix(source_var, target_var, source_nodes=list(nodes.keys()), weight=weights,
-                                           edge_attr=edge_attr)
+                                           edge_attr=edge_attr, template=edge_template)
 
         # add variable updates
         if 'node_vars' in kwargs:

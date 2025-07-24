@@ -10,6 +10,7 @@ Changelog
 - improved the downsampling method of output variables of the `Network.run` method - now, an average over all simulated samples is calculated for the downsampling
 - updated documentation and use examples to account for the recent changes to the `Network.add_diffeq_node` and `Network.run` methods
 - updated pytests to account for new downsampling method
+- added possibility to implement adaptive edges (i.e. synaptic plasticity). The `Network.add_diffeq_node` now accepts `pyrates.EdgeTemplates` instances via the keyword argument `edge_template`.
 
 0.12.1
 ------

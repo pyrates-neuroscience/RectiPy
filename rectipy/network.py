@@ -18,7 +18,7 @@ class Network(Module):
     output layers.
     """
 
-    def __init__(self, dt: float, device: str = "cpu"):
+    def __init__(self, dt: float, device: str = "cpu", dtype: torch.dtype = torch.float32):
         """Instantiates network with a single RNN layer.
 
         Parameters
@@ -34,6 +34,7 @@ class Network(Module):
 
         self.graph = DiGraph()
         self.device = device
+        self.dtype = dtype
         self.dt = dt
         self._record = {}
         self._var_map = {}
@@ -337,8 +338,7 @@ class Network(Module):
         return node
 
     def add_edge(self, source: str, target: str, weights: Union[torch.Tensor, np.ndarray] = None,
-                 train: Optional[str] = None, dtype: torch.dtype = torch.float64, edge_attrs: dict = None,
-                 **kwargs) -> Linear:
+                 train: Optional[str] = None, edge_attrs: dict = None, **kwargs) -> Linear:
         """Add a feed-forward layer to the network.
 
         Parameters
@@ -355,8 +355,6 @@ class Network(Module):
             - `None` for a static edge
             - 'gd' for training of the edge weights via standard pytorch gradient descent
             - 'rls' for recursive least squares training of the edge weights
-        dtype
-            Data type of the edge weights.
         edge_attrs
             Additional edge attributes passed to `networkx.DiGraph.add_edge`.
         kwargs
@@ -383,7 +381,7 @@ class Network(Module):
 
         # initialize edge
         kwargs.update({"n_in": self[source]["n_out"], "n_out": self[target]["n_in"],
-                       "weights": weights, "dtype": dtype})
+                       "weights": weights, "dtype": self.dtype})
         trainable = True
         if train is None:
             trainable = False
@@ -570,7 +568,7 @@ class Network(Module):
         # preparations on input arguments
         steps = inputs.shape[0]
         if type(inputs) is np.ndarray:
-            inputs = torch.tensor(inputs, device=self.device)
+            inputs = torch.tensor(inputs, device=self.device, dtype=self.dtype)
         truncate_steps = kwargs.pop("truncate_steps", steps)
 
         # compile network
@@ -693,8 +691,8 @@ class Network(Module):
         else:
 
             # transform inputs into tensors
-            inp_tensor = torch.tensor(inputs, device=self.device)
-            target_tensor = torch.tensor(targets, device=self.device)
+            inp_tensor = torch.tensor(inputs, device=self.device, dtype=self.dtype)
+            target_tensor = torch.tensor(targets, device=self.device, dtype=self.dtype)
             if inp_tensor.shape[0] != target_tensor.shape[0]:
                 raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                                  '`targets` agree in the first dimension.')
@@ -742,7 +740,7 @@ class Network(Module):
         ##############
 
         # transform inputs into tensors
-        target_tensor = torch.tensor(targets, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device, dtype=self.dtype)
         if inputs.shape[0] != target_tensor.shape[0]:
             raise ValueError('Wrong dimensions of input and target output. Please make sure that `inputs` and '
                              '`targets` agree in the first dimension.')
@@ -846,8 +844,8 @@ class Network(Module):
                                  '`targets` agree in the first dimension.')
 
             # transform inputs into tensors
-            inp_tensor = torch.tensor(inputs, device=self.device)
-            target_tensor = torch.tensor(targets, device=self.device)
+            inp_tensor = torch.tensor(inputs, device=self.device, dtype=self.dtype)
+            target_tensor = torch.tensor(targets, device=self.device, dtype=self.dtype)
 
             # fit weights
             obs = self._rls(inp_tensor, target_tensor, obs, optim_steps=update_steps, sampling_steps=sampling_steps,
@@ -931,7 +929,7 @@ class Network(Module):
         ##############
 
         # transform inputs into tensors
-        target_tensor = torch.tensor(targets, device=self.device)
+        target_tensor = torch.tensor(targets, device=self.device, dtype=self.dtype)
 
         # initialize loss function
         loss = self._get_loss_function(loss, loss_kwargs=loss_kwargs)
@@ -992,11 +990,11 @@ class Network(Module):
         for epoch in range(epochs):
 
             # simulate network dynamics
-            obs = self.run(torch.tensor(inp[epoch], device=self.device), verbose=False, sampling_steps=sampling_steps,
-                           enable_grad=True, **kwargs)
+            obs = self.run(inp[epoch], verbose=False, sampling_steps=sampling_steps, enable_grad=True, **kwargs)
 
             # perform gradient descent step
-            epoch_loss = self._bptt_step(torch.stack(obs["out"]), torch.tensor(target[epoch], device=self.device),
+            epoch_loss = self._bptt_step(torch.stack(obs["out"]),
+                                         torch.tensor(target[epoch], device=self.device, dtype=self.dtype),
                                          optimizer=optimizer, loss=loss, error_kwargs=error_kwargs,
                                          step_kwargs=step_kwargs)
             epoch_losses.append(epoch_loss)
@@ -1064,8 +1062,8 @@ class Network(Module):
         for epoch in range(epochs):
 
             # turn input and target into tensors
-            inp_tmp = torch.tensor(inp[epoch], device=self.device)
-            target_tmp = torch.tensor(target[epoch], device=self.device)
+            inp_tmp = torch.tensor(inp[epoch], device=self.device, dtype=self.dtype)
+            target_tmp = torch.tensor(target[epoch], device=self.device, dtype=self.dtype)
 
             #  optimization loop
             for step in range(inp_tmp.shape[0]):

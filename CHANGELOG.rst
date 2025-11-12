@@ -4,6 +4,11 @@ Changelog
 0.12
 ----
 
+0.12.3
+------
+
+- introduced a global torch data type for each `Network` in RectiPy
+
 0.12.2
 ------
 

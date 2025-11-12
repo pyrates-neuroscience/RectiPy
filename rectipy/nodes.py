@@ -132,8 +132,8 @@ class RateNet(Module):
                 var_map = var_mapping
                 if "node_vars" in kwargs:
                     kwargs["node_values"] = kwargs.pop("node_vars")
-                func, args, keys, state_var_indices = node.get_run_func('rnn_layer', dt, backend='torch', clear=False,
-                                                                        inplace_vectorfield=False, **kwargs)
+                func, args, keys, state_var_indices = node.get_run_func('rnn_layer', dt, backend='torch',
+                                                                        clear=False, **kwargs)
             else:
                 func, args, keys, template, var_map = cls._circuit_from_yaml(node, dt, weights=weights,
                                                                              source_var=source_var,
@@ -256,8 +256,8 @@ class RateNet(Module):
             template.update_var(node_vars=kwargs.pop('node_vars'))
 
         # generate rnn function
-        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', dt, backend='torch', clear=False,
-                                                                    inplace_vectorfield=False, **kwargs)
+        func, args, keys, state_var_indices = template.get_run_func('rnn_layer', dt, backend='torch',
+                                                                    clear=False, **kwargs)
 
         return func, args, keys, template, state_var_indices
 

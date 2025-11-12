@@ -156,26 +156,27 @@ def test_3_3_edges():
     x = torch.randn(n, dtype=torch.float64)
 
     # set up network with a single RNN layer and multiple, independent readout layers
-    net = Network(dt=1e-3)
+    net = Network(dt=1e-3, dtype=torch.float64)
     net.add_diffeq_node("rnn", node=node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                        target_var=t_var, clear=True, verbose=False, dtype=torch.float64)
+                        target_var=t_var, clear=True, verbose=False)
     net.add_func_node("readout_1", k, activation_function="identity")
     net.add_func_node("readout_2", k, activation_function="sigmoid")
     net.add_func_node("readout_3", k, activation_function="identity")
     net.add_func_node("readout_4", k, activation_function="identity")
 
     # add edges between RNN and readout layers
-    net.add_edge("rnn", "readout_1", weights=out_weights, dtype=torch.float64)
-    net.add_edge("rnn", "readout_2", dtype=torch.float32)
-    net.add_edge("rnn", "readout_3", weights=out_weights, dtype=torch.float64, train="gd")
-    net.add_edge("rnn", "readout_4", weights=out_weights, dtype=torch.float64, train="rls")
+    net.add_edge("rnn", "readout_1", weights=out_weights)
+    net.add_edge("rnn", "readout_2")
+    net.add_edge("rnn", "readout_3", weights=out_weights, train="gd")
+    net.add_edge("rnn", "readout_4", weights=out_weights, train="rls")
 
     # these tests should pass
     assert isinstance(net.get_edge("rnn", "readout_1"), Linear)
     assert isinstance(net.get_edge("rnn", "readout_3"), Linear)
     assert isinstance(net.get_edge("rnn", "readout_4"), RLS)
     assert len(list(net.parameters(recurse=True))) == 1
-    assert net.get_edge("rnn", "readout_2").weights.dtype == torch.float32
+    assert net.get_edge("rnn", "readout_2").weights.dtype == torch.float64
+    assert net.get_edge("rnn", "readout_2").weights.shape == (3, 10)
     assert net.get_edge("rnn", "readout_1").forward(x).shape[0] == k
 
     # these tests should fail
@@ -184,8 +185,6 @@ def test_3_3_edges():
         net.add_edge("rnn", "readout_1", weights=torch.randn(n, k+1))
     with pytest.raises(KeyError):
         net.add_edge("rnn_1", "readout_1", weights=torch.randn(n, k + 1))
-    with pytest.raises(RuntimeError):
-        net.get_edge("rnn", "readout_2").forward(x)
 
 
 def test_3_4_compile():
@@ -209,20 +208,20 @@ def test_3_4_compile():
     x = torch.randn(m, dtype=torch.float64)
 
     # network initialization
-    net = Network(dt=1e-3)
+    net = Network(dt=1e-3, dtype=torch.float64)
     net.add_diffeq_node('rnn', node, weights=weights, input_var=in_var, output_var=out_var, source_var=s_var,
-                        target_var=t_var, clear=True, verbose=False, dtype=torch.float64)
+                        target_var=t_var, clear=True, verbose=False)
 
     # these tests should pass
     net.compile()
     assert len(net._bwd_graph) == 0
     net.add_func_node("inp", m, activation_function="identity")
-    net.add_edge("inp", "rnn", dtype=torch.float64)
+    net.add_edge("inp", "rnn")
     net.compile()
     assert len(net._bwd_graph) == 1
     y1 = net.forward(x)
     net.add_func_node("out", k, activation_function="sigmoid")
-    net.add_edge("rnn", "out", dtype=torch.float64)
+    net.add_edge("rnn", "out")
     net.compile()
     y2 = net.forward(x)
     assert len(net._bwd_graph) == 2
@@ -362,7 +361,7 @@ def test_3_7_optimization():
     t_var = "li_op/r_in"
 
     # forward simulation of target dynamics
-    net = Network(dt, device="cpu")
+    net = Network(dt, device="cpu", dtype=torch.float64)
     net.add_diffeq_node("rnn", node, input_var=in_var, output_var=out_var, weights=W, source_var=s_var,
                         target_var=t_var)
     net.add_func_node("output", n_out, "identity")

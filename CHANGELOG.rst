@@ -8,6 +8,8 @@ Changelog
 ------
 
 - introduced a global torch data type for each `Network` in RectiPy
+- changed the test library to account for the data type definition changes
+- removed keyword argument `inplace_vectorfield` from `CircuitTemplate.get_run_func` calls to PyRates
 
 0.12.2
 ------
